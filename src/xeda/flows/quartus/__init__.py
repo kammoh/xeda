@@ -182,10 +182,7 @@ class Quartus(FpgaSynthFlow):
                                 'LUT-Only LCs',	'Register-Only LCs', 'LUT/Register LCs']
         )
 
-        rtl_top = self.settings.design['rtl']['top']
-
-        top_resources = resources[rtl_top]
-
+        top_resources = resources[self.design.rtl.top]
         top_resources['lut'] = top_resources['LUT-Only LCs'] + \
             top_resources['LUT/Register LCs']
         top_resources['ff'] = top_resources['Register-Only LCs'] + \
