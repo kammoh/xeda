@@ -206,7 +206,7 @@ class Quartus(FpgaSynthFlow):
         slacks = parse_csv(
             reports['timing'],
             id_field='Clock',
-            field_parser=lambda s: try_float,
+            field_parser=try_float,
             id_parser=lambda s: s.strip(),
             interesting_fields=['Setup', 'Hold']
         )
