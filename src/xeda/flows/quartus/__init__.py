@@ -58,10 +58,20 @@ class Quartus(FpgaSynthFlow):
         self.artifacts = {
             'reports': {
                 'utilization': self.reports_dir / 'Fitter' / 'Resource_Section' / 'Fitter_Resource_Utilization_by_Entity.csv',
-                'timing': self.reports_dir / 'Timing_Analyzer' / 'Multicorner_Timing_Analysis_Summary.csv',
+                'timing': {
+                    'multicorner_summary': self.reports_dir / 'Timing_Analyzer' / 'Multicorner_Timing_Analysis_Summary.csv',
+                }
             },
         }
-        return super().init()
+        timing_reports = self.artifacts['reports']['timing']
+        if self.design.rtl.clock and self.settings.clock_period:
+            for vcc in ['1200mV']:
+                for corner in ['Slow']:
+                    for temp in ['85C', '0C']:
+                        timing_reports[f'fmax_{corner}_{vcc}_{temp}'] = self.reports_dir / 'Timing_Analyzer' / \
+                            f'{corner}_{vcc}_{temp}_Model' / \
+                            f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv',
+
 
     def create_project(self, **kwargs):
         ss = self.settings
@@ -205,42 +215,44 @@ class Quartus(FpgaSynthFlow):
                 return float(s)
             except ValueError:
                 return s
-        slacks = parse_csv(
-            reports['timing'],
-            id_field='Clock',
-            field_parser=try_float,
-            id_parser=lambda s: s.strip(),
-            interesting_fields=['Setup', 'Hold']
-        )
-        worst_slacks = slacks['Worst-case Slack']
-        wns = worst_slacks['Setup']
-        whs = worst_slacks['Hold']
-        self.results['wns'] = wns
-        self.results['whs'] = whs
+        timing_reports = reports['timing']
+        mc_report = timing_reports.get('multicorner_summary')
+        if mc_report:
+            slacks = parse_csv(
+                mc_report,
+                id_field='Clock',
+                field_parser=try_float,
+                id_parser=lambda s: s.strip(),
+                interesting_fields=['Setup', 'Hold']
+            )
+            worst_slacks = slacks['Worst-case Slack']
+            wns = worst_slacks['Setup']
+            whs = worst_slacks['Hold']
+            self.results['wns'] = wns
+            self.results['whs'] = whs
 
-        if isinstance(wns, float) or isinstance(wns, int):
-            failed |= wns < 0
-        if isinstance(whs, float) or isinstance(whs, int):
-            failed |= whs < 0
+            if isinstance(wns, float) or isinstance(wns, int):
+                failed |= wns < 0
+            if isinstance(whs, float) or isinstance(whs, int):
+                failed |= whs < 0
 
         vcc = '1200mV'
         corner = 'Slow'
         for temp in ['85C', '0C']:
-            fmax = parse_csv(
-                self.reports_dir / 'Timing_Analyzer' /
-                f'{corner}_{vcc}_{temp}_Model' /
-                f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv',
-                id_field='Clock Name',
-                field_parser=lambda s: s.strip().split(),
-                id_parser=lambda s: s.strip(),
-                interesting_fields=['Fmax']
-            )
-            self.results[f'fmax_{temp}'] = fmax['clock']['Fmax']
-
-        temp = '85C'
-        self.results['clock_frequency'] = self.results[f'fmax_{temp}']
+            fmax_report = timing_reports.get(f'fmax_{corner}_{vcc}_{temp}')
+            if fmax_report:
+                fmax = parse_csv(
+                    fmax_report,
+                    id_field='Clock Name',
+                    field_parser=lambda s: s.strip().split(),
+                    id_parser=lambda s: s.strip(),
+                    interesting_fields=['Fmax']
+                )
+                self.results[f'fmax_{temp}'] = fmax['clock']['Fmax']
 
         self.results['success'] = not failed
+
+        return not failed
 
 
 # class QuartusPower(QuartusSynth, SimFlow):
