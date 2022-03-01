@@ -1,10 +1,10 @@
-set design_name           {{design.name}}
+set project_name          {{design.name}}
 set top                   {{design.rtl.top}}
 
 package require ::quartus::project
 package require ::quartus::flow
 
-project_open ${design_name}
+project_open ${project_name}
 
 load_package flow
 
@@ -15,10 +15,25 @@ if {[catch {execute_flow -compile} result]} {
     exit 1
 }
 
+puts "clocks: [get_clocks]"
+
 # TODO set up: verilog include-dirs, VHDL generics, verilog params,
 
 load_package report
 load_report
+
+
+set panel "Timing Analyzer||Setup Summary"
+set panel_id [get_report_panel_id $panel]
+set setup_slack [get_report_panel_data -col_name Slack -row 1 -id $panel_id]
+
+puts ""
+puts "-----------------------------------------------------"
+puts "Setup Slack: $setup_slack"
+puts "-----------------------------------------------------"
+puts ""
+
+
 
 set panel_names [get_report_panel_names]
 

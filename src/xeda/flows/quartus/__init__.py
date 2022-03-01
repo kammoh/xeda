@@ -54,6 +54,7 @@ class Quartus(FpgaSynthFlow):
     class Settings(FpgaSynthFlow.Settings):
         # part number (fpga.part) formats are quite complicated.
         # See: https://www.intel.com/content/dam/www/central-libraries/us/en/documents/product-catalog.pdf
+        seed: Optional[int] = Field(None, description="Seed")
         optimization_mode: Literal[
             "BALANCED",
             "HIGH PERFORMANCE EFFORT",
@@ -117,6 +118,7 @@ class Quartus(FpgaSynthFlow):
 
         project_settings = {
 
+            "SEED": ss.seed,
             "OPTIMIZATION_MODE": ss.optimization_mode,
             "REMOVE_REDUNDANT_LOGIC_CELLS": ss.remove_redundant_logic,
             "AUTO_RESOURCE_SHARING": ss.auto_resource_sharing,
@@ -285,7 +287,6 @@ class Quartus(FpgaSynthFlow):
         else:
             log.critical("No timing summary report is available")
 
-        
         timing_reports_folder: Path = timing_reports['*']
         for csv_file in timing_reports_folder.glob('Slow_*/*.csv'):
             log.info(f"Parsing timing report: {csv_file}")

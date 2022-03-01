@@ -1,5 +1,6 @@
 set design_name           {{design.name}}
 set top                   {{design.rtl.top}}
+set fpga_part             {{settings.fpga.part}}
 {%- if settings.debug %}
 foreach key [array names quartus] {
     puts "${key}=$quartus($key)"
@@ -13,10 +14,16 @@ project_new ${design_name} -overwrite
 
 set_global_assignment -name NUM_PARALLEL_PROCESSORS {{settings.ncpus}}
 
+puts "supported FPGA families: [get_family_list]"
+
+set fpga_part_report [report_part_info $fpga_part]
+puts $fpga_part_report
+
 {%- if settings.fpga.family %}
 set_global_assignment -name FAMILY "{{settings.fpga.family}}"
 {%- endif %}
-set_global_assignment -name DEVICE "{{settings.fpga.part}}"
+# Use get_part_list to get a list of supported part numbers
+set_global_assignment -name DEVICE $fpga_part
 
 set_global_assignment -name TOP_LEVEL_ENTITY ${top}
 
@@ -35,8 +42,6 @@ set_parameter -name {{k}} {%if v is boolean -%} {{"true" if v else "false"}} {% 
 {%- for sdc_file in sdc_files %}
 set_global_assignment -name SDC_FILE {{sdc_file}}
 {%- endfor %}
-
-puts "clocks: [get_clocks]"
 
 {%- for k,v in project_settings.items() %}
 {%- if v is not none %}
