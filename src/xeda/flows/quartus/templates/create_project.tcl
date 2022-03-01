@@ -11,7 +11,7 @@ package require ::quartus::project
 puts "\n===========================( Setting up project and settings )==========================="
 project_new ${design_name} -overwrite
 
-set_global_assignment -name NUM_PARALLEL_PROCESSORS {{settings.nthreads}}
+set_global_assignment -name NUM_PARALLEL_PROCESSORS {{settings.ncpus}}
 
 {%- if settings.fpga.family %}
 set_global_assignment -name FAMILY "{{settings.fpga.family}}"
