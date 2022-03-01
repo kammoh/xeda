@@ -16,7 +16,7 @@ set_global_assignment -name NUM_PARALLEL_PROCESSORS {{settings.nthreads}}
 {% if settings.fpga.family %}
 set_global_assignment -name FAMILY "{{settings.fpga.family}}"
 {% endif %}
-set_global_assignment -name DEVICE {{settings.fpga.part}}
+set_global_assignment -name DEVICE "{{settings.fpga.part}}"
 
 set_global_assignment -name TOP_LEVEL_ENTITY ${top}
 
@@ -35,9 +35,7 @@ set_global_assignment -name SDC_FILE {{sdc_file}}
 puts "clocks: [get_clocks]"
 
 {% for k,v in project_settings.items() %}
-set_global_assignment -name {{k}} {% if v is number -%} {{v}} {% elif v is boolean -%} {{"ON" if v else "OFF"}} {%- else -%} "{{v}}" {%- endif %}
-{% endfor %}
-
-set_global_assignment -name FLOW_ENABLE_POWER_ANALYZER ON
+set_global_assignment -name {{k}} {%if v is boolean -%} {{"ON" if v else "OFF"}}  {% elif v is number -%} {{v}} {%- else -%} "{{v}}" {%- endif %}
+{%- endfor %}
 
 project_close

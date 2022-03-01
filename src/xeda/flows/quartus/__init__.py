@@ -98,6 +98,8 @@ class Quartus(FpgaSynthFlow):
             "AUTO_DSP_RECOGNITION": ss.dsp_recognition,
             "AUTO_RAM_RECOGNITION": ss.ram_recognition,
             "AUTO_ROM_RECOGNITION": ss.rom_recognition,
+
+            "FLOW_ENABLE_POWER_ANALYZER": True
         }
 
         clock_sdc_path = self.copy_from_template(f'clock.sdc')
