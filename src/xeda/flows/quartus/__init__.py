@@ -1,13 +1,36 @@
 # © 2020 [Kamyar Mohajerani](mailto:kamyar@ieee.org)
 
-from typing import Literal
+from typing import Literal, Optional
 from pydantic.fields import Field
-from ..flow import Flow, FpgaSynthFlow, SimFlow, SynthFlow
-from ...utils import parse_csv
+import csv
+from ..flow import FpgaSynthFlow
+
+
+def parse_csv(path, id_field: Optional[str], field_parser=(lambda x: x), id_parser=(lambda x: x), interesting_fields=None):
+    """Parse TCL-generated CSV file"""
+    data = {}
+
+    with open(path, newline='') as csvfile:
+        if id_field:
+            # with header, and some rows of data indexed by id_field
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if interesting_fields is None:
+                    interesting_fields = row.keys()
+                id = id_parser(row[id_field])
+                data[id] = {k: field_parser(row[k]) for k in interesting_fields if k in row}
+        else:
+            # no header, key/value pairs on each line
+            for lrow in csv.reader(csvfile):
+                if len(lrow) == 2:
+                    data[id_parser(lrow[0])] = field_parser(lrow[1])
+    return data
 
 
 class Quartus(FpgaSynthFlow):
     class Settings(FpgaSynthFlow.Settings):
+        # part number (fpga.part) formats are quite complicated.
+        # See: https://www.intel.com/content/dam/www/central-libraries/us/en/documents/product-catalog.pdf
         optimization_mode: Literal[
             "BALANCED",
             "HIGH PERFORMANCE EFFORT",

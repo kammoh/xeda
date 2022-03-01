@@ -108,14 +108,4 @@ def try_convert(s, convert_lists=False, to_str=True):
             return s1 if to_str else s
 
 
-def parse_csv(path, id_field: Union[str,int], field_parser=(lambda x: x), id_parser=(lambda x: x), interesting_fields=None):
-    data = {}
 
-    with open(path, newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            if interesting_fields is None:
-                interesting_fields = row.keys()
-            id = id_parser(row[id_field])
-            data[id] = {k: field_parser(row[k]) for k in interesting_fields if k in row}
-        return data
