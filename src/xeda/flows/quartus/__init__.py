@@ -193,6 +193,7 @@ class Quartus(FpgaSynthFlow):
 
         resources = parse_csv(
             reports['summary'],
+            id_field=0
         )
         resources = parse_csv(
             reports['utilization'],

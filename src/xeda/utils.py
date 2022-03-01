@@ -1,7 +1,7 @@
 import re
 import csv
 import importlib
-from typing import Any, List
+from typing import Any, List, Union
 import os
 import json
 from pathlib import Path
@@ -108,7 +108,7 @@ def try_convert(s, convert_lists=False, to_str=True):
             return s1 if to_str else s
 
 
-def parse_csv(path, id_field, field_parser=(lambda x: x), id_parser=(lambda x: x), interesting_fields=None):
+def parse_csv(path, id_field: Union[str,int], field_parser=(lambda x: x), id_parser=(lambda x: x), interesting_fields=None):
     data = {}
 
     with open(path, newline='') as csvfile:
