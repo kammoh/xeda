@@ -172,11 +172,17 @@ class Quartus(FpgaSynthFlow):
     def parse_reports(self):
         failed = False
         reports = self.artifacts.get('reports')
+        def try_int(s: str):
+            s = s.strip()
+            try:
+                return int(s)
+            except ValueError:
+                return s
 
         resources = parse_csv(
             reports['utilization'],
             id_field='Compilation Hierarchy Node',
-            field_parser=lambda s: int(s.split()[0]),
+            field_parser=lambda s: try_int(s.split()[0]),
             id_parser=lambda s: s.strip()[1:],
             interesting_fields=['Logic Cells', 'Memory Bits', 'M9Ks', 'DSP Elements',
                                 'LUT-Only LCs',	'Register-Only LCs', 'LUT/Register LCs']
@@ -194,9 +200,9 @@ class Quartus(FpgaSynthFlow):
         def try_float(s: str):
             s = s.strip()
             try:
-                float(s)
+                return float(s)
             except ValueError:
-                s
+                return s
         slacks = parse_csv(
             reports['timing'],
             id_field='Clock',
@@ -209,9 +215,6 @@ class Quartus(FpgaSynthFlow):
         whs = worst_slacks['Hold']
         self.results['wns'] = wns
         self.results['whs'] = whs
-        self.results['clock_period'] = float(
-            self.settings.flow['clock_period'])
-        self.results['clock_frequency'] = 1000 / self.results['clock_period']
 
         failed |= wns < 0 or whs < 0
 
