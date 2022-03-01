@@ -15,9 +15,7 @@ if {[catch {execute_flow -compile} result]} {
     exit 1
 }
 
-
 # TODO set up: verilog include-dirs, VHDL generics, verilog params,
-
 
 load_package report
 load_report

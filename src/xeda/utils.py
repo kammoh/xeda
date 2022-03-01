@@ -114,8 +114,8 @@ def parse_csv(path, id_field, field_parser=(lambda x: x), id_parser=(lambda x: x
     with open(path, newline='') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            if not interesting_fields:
+            if interesting_fields is None:
                 interesting_fields = row.keys()
             id = id_parser(row[id_field])
-            data[id] = {k: field_parser(row[k]) for k in interesting_fields}
+            data[id] = {k: field_parser(row[k]) for k in interesting_fields if k in row}
         return data

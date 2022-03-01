@@ -29,7 +29,7 @@ class Quartus(FpgaSynthFlow):
         retiming: bool = True
         register_duplication: bool = True
         packed_registers: bool = False
-        gated_clock_conversion: bool = True
+        gated_clock_conversion: bool = False
         dsp_recognition: bool = True
         ram_recognition: bool = True
         rom_recognition: bool = True
@@ -40,7 +40,7 @@ class Quartus(FpgaSynthFlow):
         fitter_effort: Literal[
             "STANDARD FIT",
             "AUTO FIT", "FAST_FIT"
-        ] = "STANDARD FIT"
+        ] = "AUTO FIT"
         optimization_technique: Literal["AREA", "SPEED", "BALANCED"] = "SPEED"
         placement_effort_multiplier: float = Field(2.0, description="""
         A logic option that controls how much time the Fitter spends in placement. 
@@ -57,6 +57,7 @@ class Quartus(FpgaSynthFlow):
     def init(self):
         self.artifacts = {
             'reports': {
+                'summary': self.reports_dir / 'Flow_Summary.csv',
                 'utilization': self.reports_dir / 'Fitter' / 'Resource_Section' / 'Fitter_Resource_Utilization_by_Entity.csv',
                 'timing': {
                     'multicorner_summary': self.reports_dir / 'Timing_Analyzer' / 'Multicorner_Timing_Analysis_Summary.csv',
@@ -98,15 +99,15 @@ class Quartus(FpgaSynthFlow):
             "ROUTER_TIMING_OPTIMIZATION_LEVEL": ss.router_timing_optimization_level,
 
             "FINAL_PLACEMENT_OPTIMIZATION": ss.final_placement_optimization,
-            # "PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA": "ON",
+            # "PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA": True,
             # ?
-            # "ADV_NETLIST_OPT_SYNTH_GATE_RETIME": "ON",
+            # "ADV_NETLIST_OPT_SYNTH_GATE_RETIME": True,
             # ?
-            # "ADV_NETLIST_OPT_SYNTH_WYSIWYG_REMAP": "ON",
+            # "ADV_NETLIST_OPT_SYNTH_WYSIWYG_REMAP": True,
 
             "AUTO_PACKED_REGISTERS_STRATIX": ss.packed_registers,
             "AUTO_PACKED_REGISTERS_CYCLONE": ss.packed_registers,
-            "PHYSICAL_SYNTHESIS_COMBO_LOGIC": "ON",
+            "PHYSICAL_SYNTHESIS_COMBO_LOGIC": True,
             "PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION": ss.register_duplication,
             "PHYSICAL_SYNTHESIS_REGISTER_RETIMING": ss.retiming,
 
@@ -191,15 +192,20 @@ class Quartus(FpgaSynthFlow):
                 return s
 
         resources = parse_csv(
+            reports['summary'],
+        )
+        resources = parse_csv(
             reports['utilization'],
             id_field='Compilation Hierarchy Node',
             field_parser=lambda s: try_int(s.split()[0]),
             id_parser=lambda s: s.strip()[1:],
-            interesting_fields=['Logic Cells', 'Memory Bits', 'M9Ks', 'DSP Elements',
-                                'LUT-Only LCs',	'Register-Only LCs', 'LUT/Register LCs']
+            interesting_fields=['Logic Cells', 'Memory Bits', 'M10Ks', 'M9Ks', 'DSP Elements', 'ALMs needed [=A-B+C]',
+                                'Combinational ALUTs', 'ALMs used for memory', 'DSP Blocks', 'Pins'
+                                'LUT-Only LCs',	'Register-Only LCs', 'LUT/Register LCs', 'Block Memory Bits']
         )
 
-        top_resources = resources[self.design.rtl.top]
+        top_resources: dict = resources[self.design.rtl.top]
+        top_resources.setdefault(0)
         top_resources['lut'] = top_resources['LUT-Only LCs'] + \
             top_resources['LUT/Register LCs']
         top_resources['ff'] = top_resources['Register-Only LCs'] + \
