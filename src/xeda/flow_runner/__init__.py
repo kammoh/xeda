@@ -38,8 +38,8 @@ def print_results(flow: Flow, results=None):
                   box=box.ROUNDED,
                   show_lines=True,
                   )
-    table.add_column("Field", justify="left", style="bold", no_wrap=True)
-    table.add_column("Value", justify="right")
+    table.add_column(style="bold", no_wrap=True)
+    table.add_column(justify="right")
     for k, v in results.items():
         if v is not None and not k.startswith('_'):
             if k == 'success':

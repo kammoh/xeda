@@ -1,6 +1,6 @@
 set design_name           {{design.name}}
 set top                   {{design.rtl.top}}
-{% if debug %}
+{% if settings.debug %}
 foreach key [array names quartus] {
     puts "${key}=$quartus($key)"
 }
@@ -11,12 +11,12 @@ package require ::quartus::project
 puts "\n===========================( Setting up project and settings )==========================="
 project_new ${design_name} -overwrite
 
-set_global_assignment -name NUM_PARALLEL_PROCESSORS {{nthreads}}
+set_global_assignment -name NUM_PARALLEL_PROCESSORS {{settings.nthreads}}
 
-{% if flow.fpga_part.startswith("10CL0") %}
-set_global_assignment -name FAMILY "Cyclone 10 LP"
+{% if settings.fpga.family %}
+set_global_assignment -name FAMILY "{{settings.fpga.family}}"
 {% endif %}
-set_global_assignment -name DEVICE {{flow.fpga_part}}
+set_global_assignment -name DEVICE {{settings.fpga.part}}
 
 set_global_assignment -name TOP_LEVEL_ENTITY ${top}
 
@@ -34,10 +34,8 @@ set_global_assignment -name SDC_FILE {{sdc_file}}
 
 puts "clocks: [get_clocks]"
 
-set_global_assignment -name NUM_PARALLEL_PROCESSORS {{nthreads}}
-
 {% for k,v in project_settings.items() %}
-set_global_assignment -name {{k}} {% if v is number -%} {{v}} {%- else -%} "{{v}}" {%- endif %}
+set_global_assignment -name {{k}} {% if v is number -%} {{v}} {% elif v is boolean -%} {{"ON" if v else "OFF"}} {%- else -%} "{{v}}" {%- endif %}
 {% endfor %}
 
 set_global_assignment -name FLOW_ENABLE_POWER_ANALYZER ON

@@ -1,95 +1,104 @@
 # © 2020 [Kamyar Mohajerani](mailto:kamyar@ieee.org)
 
-from ..flow import DseFlow, Flow, SimFlow, SynthFlow
+from typing import Literal
+from pydantic.fields import Field
+from ..flow import Flow, FpgaSynthFlow, SimFlow, SynthFlow
 from ...utils import parse_csv
 
 
-class Quartus(Flow):
-    required_settings = {'clock_period': float, 'fpga_part': str}
+class Quartus(FpgaSynthFlow):
+    class Settings(FpgaSynthFlow.Settings):
+        optimization_mode: Literal[
+            "BALANCED",
+            "HIGH PERFORMANCE EFFORT",
+            "AGGRESSIVE PERFORMANCE",
+            "High Performance with Maximum Placement Effort",
+            "Superior Performance",
+            "Superior Performance with Maximum Placement Effort",
+            "Aggressive Area",
+            "High Placement Routability Effort",
+            "High Packing Routability Effort",
+            "Optimize Netlist for Routability",
+            "High Power Effort",
+        ] = Field("HIGH PERFORMANCE EFFORT", description="""
+            see https://www.intel.com/content/www/us/en/programmable/documentation/zpr1513988353912.html
+            https://www.intel.com/content/www/us/en/programmable/quartushelp/current/index.htm
+        """)
+        remove_redundant_logic: bool = True
+        auto_resource_sharing: bool = True
+        retiming: bool = True
+        register_duplication: bool = True
+        packed_registers: bool = False
+        gated_clock_conversion: bool = True
+        dsp_recognition: bool = True
+        ram_recognition: bool = True
+        rom_recognition: bool = True
+        synthesis_effort: Literal[
+            "auto",
+            "fast"
+        ] = "auto"
+        fitter_effort: Literal[
+            "STANDARD FIT",
+            "AUTO FIT", "FAST_FIT"
+        ] = "STANDARD FIT"
+        optimization_technique: Literal["AREA", "SPEED", "BALANCED"] = "SPEED"
+        placement_effort_multiplier: float = Field(2.0, description="""
+        A logic option that controls how much time the Fitter spends in placement. 
+        The default value is 1.0 and legal values must be greater than 0 and can be non-integer values.
+        Values between 0 and 1 can reduce fitting time, but also can reduce placement quality and design performance.
+        Values greater than 1 increase placement time and placement quality, but may reduce routing time for designs with routing congestion.
+        For example, a value of 4 increases fitting time by approximately 2 to 4 times, but may improve quality."""
+                                                   )
+        router_timing_optimization_level: Literal["Normal", "Maximum", "Minimum"] = "Maximum"
+        final_placement_optimization: Literal["ALWAYS", "AUTOMATICALLY", "NEVER"] = "ALWAYS"
 
     def create_project(self, **kwargs):
+        ss = self.settings
 
-        strategy_settings = {
-            'Timing': {
-                # see https://www.intel.com/content/www/us/en/programmable/documentation/zpr1513988353912.html
-                # https://www.intel.com/content/www/us/en/programmable/quartushelp/current/index.htm
-                # BALANCED "HIGH PERFORMANCE EFFORT" AGGRESSIVE PERFORMANCE
-                # "High Performance with Maximum Placement Effort"
-                # "Superior Performance"
-                # "Superior Performance with Maximum Placement Effort"
-                # "Aggressive Area"
-                # "High Placement Routability Effort"
-                # "High Packing Routability Effort"
-                # "Optimize Netlist for Routability
-                # "High Power Effort"
-                "OPTIMIZATION_MODE": "HIGH PERFORMANCE EFFORT",
-                "REMOVE_REDUNDANT_LOGIC_CELLS": "ON",
-                "AUTO_RESOURCE_SHARING": "ON",
-                "ALLOW_REGISTER_RETIMING": "ON",
+        project_settings = {
 
-                "SYNTH_GATED_CLOCK_CONVERSION": "ON",
+            "OPTIMIZATION_MODE": ss.optimization_mode,
+            "REMOVE_REDUNDANT_LOGIC_CELLS": ss.remove_redundant_logic,
+            "AUTO_RESOURCE_SHARING": ss.auto_resource_sharing,
+            "ALLOW_REGISTER_RETIMING": ss.retiming,
+
+            "SYNTH_GATED_CLOCK_CONVERSION": ss.gated_clock_conversion,
 
 
-                # faster: AUTO FIT, fastest: FAST_FIT
-                "FITTER_EFFORT": "STANDARD FIT",
+            # faster:
+            "FITTER_EFFORT": ss.fitter_effort,
 
-                # AREA, SPEED, BALANCED
-                "STRATIX_OPTIMIZATION_TECHNIQUE": "SPEED",
-                "CYCLONE_OPTIMIZATION_TECHNIQUE": "SPEED",
+            # AREA, SPEED, BALANCED
+            "STRATIX_OPTIMIZATION_TECHNIQUE": ss.optimization_technique,
+            "CYCLONE_OPTIMIZATION_TECHNIQUE": ss.optimization_technique,
 
-                # see https://www.intel.com/content/www/us/en/programmable/documentation/rbb1513988527943.html
-                # The Router Effort Multiplier controls how quickly the router tries to find a valid solution. The default value is 1.0 and legal values must be greater than 0.
-                # Numbers higher than 1 help designs that are difficult to route by increasing the routing effort.
-                # Numbers closer to 0 (for example, 0.1) can reduce router runtime, but usually reduce routing quality slightly.
-                # Experimental evidence shows that a multiplier of 3.0 reduces overall wire usage by approximately 2%. Using a Router Effort Multiplier higher than the default value can benefit designs with complex datapaths with more than five levels of logic. However, congestion in a design is primarily due to placement, and increasing the Router Effort Multiplier does not necessarily reduce congestion.
-                # Note: Any Router Effort Multiplier value greater than 4 only increases by 10% for every additional 1. For example, a value of 10 is actually 4.6.
-                "PLACEMENT_EFFORT_MULTIPLIER": 3.0,
-                "ROUTER_EFFORT_MULTIPLIER": 3.0,
+            # see https://www.intel.com/content/www/us/en/programmable/documentation/rbb1513988527943.html
+            "PLACEMENT_EFFORT_MULTIPLIER": ss.placement_effort_multiplier,
 
-                # NORMAL, MINIMUM,MAXIMUM
-                "ROUTER_TIMING_OPTIMIZATION_LEVEL": "MAXIMUM",
+            "ROUTER_TIMING_OPTIMIZATION_LEVEL": ss.router_timing_optimization_level,
 
-                # ALWAYS, AUTOMATICALLY, NEVER
-                "FINAL_PLACEMENT_OPTIMIZATION": "ALWAYS",
-                # "PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA": "ON",
-                # ?
-                # "ADV_NETLIST_OPT_SYNTH_GATE_RETIME": "ON",
-                # ?
-                # "ADV_NETLIST_OPT_SYNTH_WYSIWYG_REMAP": "ON",
+            "FINAL_PLACEMENT_OPTIMIZATION": ss.final_placement_optimization,
+            # "PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA": "ON",
+            # ?
+            # "ADV_NETLIST_OPT_SYNTH_GATE_RETIME": "ON",
+            # ?
+            # "ADV_NETLIST_OPT_SYNTH_WYSIWYG_REMAP": "ON",
 
-                "AUTO_PACKED_REGISTERS_STRATIX": "OFF",
-                "AUTO_PACKED_REGISTERS_CYCLONE": "OFF",
-                "PHYSICAL_SYNTHESIS_COMBO_LOGIC": "ON",
-                "PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION": "ON",
-                "PHYSICAL_SYNTHESIS_REGISTER_RETIMING": "ON",
-                "PHYSICAL_SYNTHESIS_EFFORT": "EXTRA",
+            "AUTO_PACKED_REGISTERS_STRATIX": ss.packed_registers,
+            "AUTO_PACKED_REGISTERS_CYCLONE": ss.packed_registers,
+            "PHYSICAL_SYNTHESIS_COMBO_LOGIC": "ON",
+            "PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION": ss.register_duplication,
+            "PHYSICAL_SYNTHESIS_REGISTER_RETIMING": ss.retiming,
 
-                #NORMAL, OFF, EXTRA_EFFORT
-                # "OPTIMIZE_POWER_DURING_SYNTHESIS": "NORMAL",
+            # "PHYSICAL_SYNTHESIS_EFFORT": "EXTRA",
 
-                # Used during placement. Use of a higher value increases compilation time, but may increase the quality of placement.
-                "INNER_NUM": 8,
-                # SYNTH_CRITICAL_CLOCK: ON, OFF : Speed Optimization Technique for Clock Domains}
-            }, 'Default' :{
-
-            }
+            #NORMAL, OFF, EXTRA_EFFORT
+            # "OPTIMIZE_POWER_DURING_SYNTHESIS": "NORMAL",
+            # SYNTH_CRITICAL_CLOCK: ON, OFF : Speed Optimization Technique for Clock Domains}
+            "AUTO_DSP_RECOGNITION": ss.dsp_recognition,
+            "AUTO_RAM_RECOGNITION": ss.ram_recognition,
+            "AUTO_ROM_RECOGNITION": ss.rom_recognition,
         }
-
-        project_settings = None
-        if 'project_settings' in self.settings.flow:
-            project_settings = self.settings.flow['project_settings']
-
-        strategy = self.settings.flow.get('strategy', 'Default')
-        # TODO manage settings
-        if not project_settings:
-            project_settings = strategy_settings[strategy]
-
-        # ???? TODO not sure this is right, maybe apply ramstyle/dspstyle on all hierarchy using TCL?
-        if not self.settings.flow['allow_dsps']:
-            project_settings["AUTO_DSP_RECOGNITION"] = "OFF"
-        if not self.settings.flow['allow_brams']:
-            project_settings["AUTO_RAM_RECOGNITION"] = "OFF"
-            project_settings["AUTO_ROM_RECOGNITION"] = "OFF"
 
         clock_sdc_path = self.copy_from_template(f'clock.sdc')
         script_path = self.copy_from_template(
@@ -98,7 +107,7 @@ class Quartus(Flow):
             project_settings=project_settings,
             **kwargs
         )
-        self.run_process('quartus_sh', ['-t', str(script_path)], stdout_logfile='create_project_stdout.log')
+        self.run_tool('quartus_sh', ['-t', script_path])
 
         # self.run_process('quartus_sh',
         #                  ['--dse', '-project', self.settings.design['name'], '-nogui', '-concurrent-compiles', '8', '-exploration-space',
@@ -139,17 +148,10 @@ class Quartus(Flow):
     #     # self.settings.flow['generics_options'] = quartus_generics(self.settings.design["generics"], sim=False)
     #     # self.settings.flow['tb_generics_options'] = quartus_generics(self.settings.design["tb_generics"], sim=True)
 
-
-class QuartusSynth(Quartus, SynthFlow):
-
     def run(self):
-        prj_name = self.settings.design['name']
         self.create_project()
         script_path = self.copy_from_template(f'compile.tcl')
-        self.run_process('quartus_sh',
-                         ['-t', str(script_path)],
-                         stdout_logfile='compile_stdout.log'
-                         )
+        self.run_tool('quartus_sh',['-t', str(script_path)])
         # self.run_process('quartus_eda', [prj_name, '--simulation', '--functional', '--tool=modelsim_oem', '--format=verilog'],
         #                         stdout_logfile='eda_1_stdout.log'
         #                         )
@@ -158,7 +160,8 @@ class QuartusSynth(Quartus, SynthFlow):
         failed = False
 
         resources = parse_csv(
-            self.reports_dir / 'Fitter' / 'Resource_Section' / 'Fitter_Resource_Utilization_by_Entity.csv',
+            self.reports_dir / 'Fitter' / 'Resource_Section' /
+            'Fitter_Resource_Utilization_by_Entity.csv',
             id_field='Compilation Hierarchy Node',
             field_parser=lambda s: int(s.split()[0]),
             id_parser=lambda s: s.strip()[1:],
@@ -170,8 +173,10 @@ class QuartusSynth(Quartus, SynthFlow):
 
         top_resources = resources[rtl_top]
 
-        top_resources['lut'] = top_resources['LUT-Only LCs'] + top_resources['LUT/Register LCs']
-        top_resources['ff'] = top_resources['Register-Only LCs'] + top_resources['LUT/Register LCs']
+        top_resources['lut'] = top_resources['LUT-Only LCs'] + \
+            top_resources['LUT/Register LCs']
+        top_resources['ff'] = top_resources['Register-Only LCs'] + \
+            top_resources['LUT/Register LCs']
 
         self.results.update(top_resources)
 
@@ -188,9 +193,9 @@ class QuartusSynth(Quartus, SynthFlow):
         whs = worst_slacks['Hold']
         self.results['wns'] = wns
         self.results['whs'] = whs
-        self.results['clock_period'] = float(self.settings.flow['clock_period'])
+        self.results['clock_period'] = float(
+            self.settings.flow['clock_period'])
         self.results['clock_frequency'] = 1000 / self.results['clock_period']
-        
 
         failed |= wns < 0 or whs < 0
 
@@ -199,7 +204,8 @@ class QuartusSynth(Quartus, SynthFlow):
         for temp in ['85C', '0C']:
             fmax = parse_csv(
                 self.reports_dir / 'Timing_Analyzer' /
-                f'{corner}_{vcc}_{temp}_Model' / f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv',
+                f'{corner}_{vcc}_{temp}_Model' /
+                f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv',
                 id_field='Clock Name',
                 field_parser=lambda s: s.strip().split(),
                 id_parser=lambda s: s.strip(),
