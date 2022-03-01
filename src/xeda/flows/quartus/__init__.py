@@ -254,10 +254,12 @@ class Quartus(FpgaSynthFlow):
 
         top_resources: dict = resources[self.design.rtl.top]
         top_resources.setdefault(0)
-        top_resources['lut'] = top_resources['LUT-Only LCs'] + \
-            top_resources['LUT/Register LCs']
-        top_resources['ff'] = top_resources['Register-Only LCs'] + \
-            top_resources['LUT/Register LCs']
+        r0 = top_resources.get('LUT-Only LCs')
+        if r0:
+            top_resources['lut'] = r0 + top_resources.get('LUT/Register LCs', 0)
+        r0 = top_resources.get('Register-Only LCs')
+        if r0:
+            top_resources['ff'] = r0 + top_resources.get('LUT/Register LCs', 0)
 
         self.results.update(top_resources)
 
