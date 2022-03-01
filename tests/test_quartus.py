@@ -1,28 +1,53 @@
 from pathlib import Path
-from xeda.flows.quartus import parse_csv
+from xeda.flows.quartus import parse_csv, try_num
 
 
 def test_parse_csv():
-    parsed = parse_csv("tests/resources/Fitter_Resource_Utilization_by_Entity.csv", 'Compilation Hierarchy Node')
-    assert parsed == {
-        '|full_adder_piped': {
-            'ALMs needed [=A-B+C]': '1.5 (1.5)',
-            '[A] ALMs used in final placement': '1.5 (1.5)',
-            '[B] Estimate of ALMs recoverable by dense packing': '0.0 (0.0)',
-            '[C] Estimate of ALMs unavailable': '0.0 (0.0)',
-            'ALMs used for memory': '0.0 (0.0)',
-            'Block Memory Bits': '0',
-            'Combinational ALUTs': '3 (3)',
-            'Compilation Hierarchy Node': '|full_adder_piped',
-            'DSP Blocks': '0',
-            'Dedicated Logic Registers': '2 (2)',
-            'Entity Name': 'full_adder_piped',
-            'Full Hierarchy Name': '|full_adder_piped',
-            'I/O Registers': '0 (0)',
-            'Library Name': 'work',
-            'M10Ks': '0',
-            'Pins': '7',
-            'Virtual Pins': '0',
+    report_file = "tests/resources/Fitter_Resource_Utilization_by_Entity.csv"
+    resources = parse_csv(
+        report_file,
+        id_field='Compilation Hierarchy Node',
+        field_parser=lambda s: try_num(s.split()[0]),
+        id_parser=lambda s: s.strip().lstrip("|"),
+        # interesting_fields=None
+        interesting_fields=[
+                'Logic Cells',
+                'LUT-Only LCs',
+                'Register-Only LCs',
+                'LUT/Register LCs',
+                'Dedicated Logic Registers',
+                'ALMs needed [=A-B+C]',
+                'Combinational ALUTs',
+                'ALMs used for memory',
+                'Memory Bits', 'M10Ks', 'M9Ks', 'DSP Elements',
+                'DSP Blocks',
+                'Block Memory Bits',
+                'Pins',
+                'I/O Registers',
+            ]
+        # ['Logic Cells', 'Memory Bits', 'M10Ks', 'M9Ks', 'DSP Elements', 'ALMs needed [=A-B+C]',
+        #                     'Combinational ALUTs', 'ALMs used for memory', 'DSP Blocks', 'Pins'
+        #                     'LUT-Only LCs',	'Register-Only LCs', 'LUT/Register LCs', 'Block Memory Bits']
+    )
+    assert resources == {
+        'full_adder_piped': {
+            'ALMs needed [=A-B+C]': 1.5,
+            'ALMs used for memory': 0.0,
+            'Block Memory Bits': 0,
+            'Combinational ALUTs': 3,
+            # 'Compilation Hierarchy Node': '|full_adder_piped',
+            'DSP Blocks': 0,
+            'Dedicated Logic Registers': 2,
+            # 'Entity Name': 'full_adder_piped',
+            # 'Full Hierarchy Name': '|full_adder_piped',
+            'I/O Registers': 0,
+            # 'Library Name': 'work',
+            'M10Ks': 0,
+            'Pins': 7,
+            # 'Virtual Pins': 0,
+            # '[A] ALMs used in final placement': 1.5,
+            # '[B] Estimate of ALMs recoverable by dense packing': 0.0,
+            # '[C] Estimate of ALMs unavailable': 0.0
         },
     }
 

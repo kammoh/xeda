@@ -27,6 +27,25 @@ def parse_csv(path, id_field: Optional[str], field_parser=(lambda x: x), id_pars
     return data
 
 
+def try_num(s: str):
+    s = s.strip()
+    try:
+        return int(s)
+    except ValueError:
+        try:
+            return float(s)
+        except ValueError:
+            return s
+
+
+def try_float(s: str):
+    s = s.strip()
+    try:
+        return float(s)
+    except ValueError:
+        return s
+
+
 class Quartus(FpgaSynthFlow):
     class Settings(FpgaSynthFlow.Settings):
         # part number (fpga.part) formats are quite complicated.
@@ -207,13 +226,6 @@ class Quartus(FpgaSynthFlow):
         failed = False
         reports = self.artifacts.get('reports')
 
-        def try_int(s: str):
-            s = s.strip()
-            try:
-                return int(s)
-            except ValueError:
-                return s
-
         resources = parse_csv(
             reports['summary'],
             id_field=0
@@ -221,11 +233,23 @@ class Quartus(FpgaSynthFlow):
         resources = parse_csv(
             reports['utilization'],
             id_field='Compilation Hierarchy Node',
-            field_parser=lambda s: try_int(s.split()[0]),
-            id_parser=lambda s: s.strip()[1:],
-            interesting_fields=['Logic Cells', 'Memory Bits', 'M10Ks', 'M9Ks', 'DSP Elements', 'ALMs needed [=A-B+C]',
-                                'Combinational ALUTs', 'ALMs used for memory', 'DSP Blocks', 'Pins'
-                                'LUT-Only LCs',	'Register-Only LCs', 'LUT/Register LCs', 'Block Memory Bits']
+            field_parser=lambda s: try_num(s.split()[0]),
+            id_parser=lambda s: s.strip().lstrip("|"),
+            interesting_fields=[
+                'Logic Cells',
+                'LUT-Only LCs',
+                'Register-Only LCs',
+                'LUT/Register LCs',
+                'Dedicated Logic Registers',
+                'ALMs needed [=A-B+C]',
+                'Combinational ALUTs',
+                'ALMs used for memory',
+                'Memory Bits', 'M10Ks', 'M9Ks', 'DSP Elements',
+                'DSP Blocks',
+                'Block Memory Bits',
+                'Pins',
+                'I/O Registers',
+            ]
         )
 
         top_resources: dict = resources[self.design.rtl.top]
@@ -237,13 +261,8 @@ class Quartus(FpgaSynthFlow):
 
         self.results.update(top_resources)
 
-        # TODO is this the most reliable timing report?
-        def try_float(s: str):
-            s = s.strip()
-            try:
-                return float(s)
-            except ValueError:
-                return s
+        # TODO reference for why this timing report is chosen
+
         timing_reports = reports['timing']
         mc_report = timing_reports.get('multicorner_summary')
         if mc_report:
