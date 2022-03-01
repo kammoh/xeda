@@ -71,3 +71,19 @@ def test_parse_csv_no_header():
         'Total HSSI PMA TX Serializers': '0 / 3 ( 0 % )',
         'Total PLLs': '0 / 7 ( 0 % )', 'Total DLLs': '0 / 3 ( 0 % )'
     }
+
+
+# Python program to explain os.cpu_count() method  
+  
+# importing os module 
+import os
+  
+  
+# Get the number of CPUs
+# in the system using
+# os.cpu_count() method
+cpuCount = os.cpu_count()
+  
+# Print the number of
+# CPUs in the system
+print("Number of CPUs in the system:", cpuCount)

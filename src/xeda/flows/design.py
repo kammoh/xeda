@@ -144,8 +144,9 @@ class Clock(BaseModel):
 
 
 class RtlSettings(DVSettings):
-    clock: Clock = Clock(port=None)
-    clock_port: NoneStr = None
+    clock: Clock = Clock(port=None) # TODO rename to primary_clock?
+    clocks: Dict[str, Clock] = {}
+    clock_port: NoneStr = None # TODO remove?
 
     @root_validator(pre=False)
     def rtl_settings_validate(cls, values):
@@ -155,6 +156,8 @@ class RtlSettings(DVSettings):
             clock.port = clock_port
         if not clock_port:
             values['clock_port'] = clock.port
+        if not values.get('clocks'):
+            values['clocks'] = {'main_clock': clock}
         return values
 
 

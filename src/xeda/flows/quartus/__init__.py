@@ -1,5 +1,6 @@
 # © 2020 [Kamyar Mohajerani](mailto:kamyar@ieee.org)
 
+from pathlib import Path
 from typing import Literal, Optional
 from pydantic.fields import Field
 import csv
@@ -7,6 +8,7 @@ import logging
 from ..flow import FpgaSynthFlow
 
 log = logging.getLogger(__name__)
+
 
 def parse_csv(path, id_field: Optional[str], field_parser=(lambda x: x), id_parser=(lambda x: x), interesting_fields=None):
     """Parse TCL-generated CSV file"""
@@ -104,20 +106,11 @@ class Quartus(FpgaSynthFlow):
                 'summary': self.reports_dir / 'Flow_Summary.csv',
                 'utilization': self.reports_dir / 'Fitter' / 'Resource_Section' / 'Fitter_Resource_Utilization_by_Entity.csv',
                 'timing': {
+                    '*': self.reports_dir / 'Timing_Analyzer',
                     'multicorner_summary': self.reports_dir / 'Timing_Analyzer' / 'Multicorner_Timing_Analysis_Summary.csv',
                 }
             },
         }
-        timing_reports = self.artifacts['reports']['timing']
-        if self.design.rtl.clock and self.settings.clock_period:
-            for vcc in ['1200mV']:
-                for corner in ['Slow']:
-                    for temp in ['85C', '0C']:
-                        timing_reports[f'fmax_{corner}_{vcc}_{temp}'] = self.reports_dir / 'Timing_Analyzer' / \
-                            f'{corner}_{vcc}_{temp}_Model' / \
-                            f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv'
-        else:
-            log.critical("self.design.rtl.clock and/or self.settings.clock_period are not set! Timing reports will not be parsed.")
 
     def create_project(self, **kwargs):
         ss = self.settings
@@ -289,20 +282,21 @@ class Quartus(FpgaSynthFlow):
                 failed |= wns < 0
             if isinstance(whs, float) or isinstance(whs, int):
                 failed |= whs < 0
+        else:
+            log.critical("No timing summary report is available")
 
-        vcc = '1200mV'
-        corner = 'Slow'
-        for temp in ['85C', '0C']:
-            fmax_report = timing_reports.get(f'fmax_{corner}_{vcc}_{temp}')
-            if fmax_report:
-                fmax = parse_csv(
-                    fmax_report,
-                    id_field='Clock Name',
-                    field_parser=lambda s: s.strip().split(),
-                    id_parser=lambda s: s.strip(),
-                    interesting_fields=['Fmax']
-                )
-                self.results[f'fmax_{temp}'] = fmax['clock']['Fmax']
+        
+        timing_reports_folder: Path = timing_reports['*']
+        for csv_file in timing_reports_folder.glob('Slow_*/*.csv'):
+            log.info(f"Parsing timing report: {csv_file}")
+            fmax = parse_csv(
+                csv_file,
+                id_field='Clock Name',
+                field_parser=lambda s: s.strip().split(),
+                id_parser=lambda s: s.strip(),
+                interesting_fields=['Fmax']
+            )
+            self.results[f'fmax_{temp}'] = fmax['clock']['Fmax']
 
         self.results['success'] = not failed
 
