@@ -3,7 +3,7 @@ import math
 import coloredlogs
 import time
 import logging
-from pathlib import Path
+from pathlib import Path, PosixPath
 from datetime import datetime, timedelta
 from typing import Mapping, Type, Any
 import importlib
@@ -256,9 +256,14 @@ class FlowRunner:
             if not flow.results['success']:
                 logger.error(f"Failure was reported in the parsed results.")
                 failed = True
+        def default_encoder(x):
+            if isinstance(x, PosixPath):
+                return str(x.relative_to(flow.run_path))
+            return str(x)
+
         if flow.artifacts:
             print(f"Generated artifacts in {flow.run_path}:")  # FIXME
-            print_json(data=flow.artifacts)  # FIXME
+            print_json(data=flow.artifacts, default=default_encoder)  # FIXME
 
         if failed:
             flow.results['success'] = False
