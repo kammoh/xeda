@@ -163,7 +163,8 @@ class Quartus(FpgaSynthFlow):
 
     def run(self):
         self.create_project()
-        script_path = self.copy_from_template(f'compile.tcl', reports_dir=self.reports_dir)
+        script_path = self.copy_from_template(
+            f'compile.tcl', reports_dir=self.reports_dir)
         self.run_tool('quartus_sh', ['-t', str(script_path)])
         # self.run_process('quartus_eda', [prj_name, '--simulation', '--functional', '--tool=modelsim_oem', '--format=verilog'],
         #                         stdout_logfile='eda_1_stdout.log'
@@ -172,6 +173,7 @@ class Quartus(FpgaSynthFlow):
     def parse_reports(self):
         failed = False
         reports = self.artifacts.get('reports')
+
         def try_int(s: str):
             s = s.strip()
             try:
@@ -216,7 +218,10 @@ class Quartus(FpgaSynthFlow):
         self.results['wns'] = wns
         self.results['whs'] = whs
 
-        failed |= wns < 0 or whs < 0
+        if isinstance(wns, float) or isinstance(wns, int):
+            failed |= wns < 0
+        if isinstance(whs, float) or isinstance(whs, int):
+            failed |= whs < 0
 
         vcc = '1200mV'
         corner = 'Slow'
