@@ -191,10 +191,16 @@ class Quartus(FpgaSynthFlow):
         self.results.update(top_resources)
 
         # TODO is this the most reliable timing report?
+        def try_float(s: str):
+            s = s.strip()
+            try:
+                float(s)
+            except ValueError:
+                s
         slacks = parse_csv(
             reports['timing'],
             id_field='Clock',
-            field_parser=lambda s: float(s.strip()),
+            field_parser=lambda s: try_float,
             id_parser=lambda s: s.strip(),
             interesting_fields=['Setup', 'Hold']
         )
