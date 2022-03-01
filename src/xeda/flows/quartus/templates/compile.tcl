@@ -26,10 +26,6 @@ set panel_names [get_report_panel_names]
 
 puts "panel_names=${panel_names}"
 
-set reports_dir {{reports_dir}}
-
-file mkdir $reports_dir
-
 foreach panel_name $panel_names {
 
     set csv_file [string trim $panel_name]
@@ -44,7 +40,7 @@ foreach panel_name $panel_names {
     set csv_file [regsub -all {_*'+_*} $csv_file {} ]
     set csv_file [regsub -all {_*"+_*} $csv_file {} ]
 
-    set csv_file $reports_dir/$csv_file.csv
+    set csv_file {{reports_dir}}/$csv_file.csv
 
     set csv_file_dir [file dirname ${csv_file}]
 

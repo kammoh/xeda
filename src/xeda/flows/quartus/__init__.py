@@ -49,8 +49,19 @@ class Quartus(FpgaSynthFlow):
         Values greater than 1 increase placement time and placement quality, but may reduce routing time for designs with routing congestion.
         For example, a value of 4 increases fitting time by approximately 2 to 4 times, but may improve quality."""
                                                    )
-        router_timing_optimization_level: Literal["Normal", "Maximum", "Minimum"] = "Maximum"
-        final_placement_optimization: Literal["ALWAYS", "AUTOMATICALLY", "NEVER"] = "ALWAYS"
+        router_timing_optimization_level: Literal["Normal",
+                                                  "Maximum", "Minimum"] = "Maximum"
+        final_placement_optimization: Literal["ALWAYS",
+                                              "AUTOMATICALLY", "NEVER"] = "ALWAYS"
+
+    def init(self):
+        self.artifacts = {
+            'reports': {
+                'utilization': self.reports_dir / 'Fitter' / 'Resource_Section' / 'Fitter_Resource_Utilization_by_Entity.csv',
+                'timing': self.reports_dir / 'Timing_Analyzer' / 'Multicorner_Timing_Analysis_Summary.csv',
+            },
+        }
+        return super().init()
 
     def create_project(self, **kwargs):
         ss = self.settings
@@ -152,18 +163,18 @@ class Quartus(FpgaSynthFlow):
 
     def run(self):
         self.create_project()
-        script_path = self.copy_from_template(f'compile.tcl')
-        self.run_tool('quartus_sh',['-t', str(script_path)])
+        script_path = self.copy_from_template(f'compile.tcl', reports_dir=self.reports_dir)
+        self.run_tool('quartus_sh', ['-t', str(script_path)])
         # self.run_process('quartus_eda', [prj_name, '--simulation', '--functional', '--tool=modelsim_oem', '--format=verilog'],
         #                         stdout_logfile='eda_1_stdout.log'
         #                         )
 
     def parse_reports(self):
         failed = False
+        reports = self.artifacts.get('reports')
 
         resources = parse_csv(
-            self.reports_dir / 'Fitter' / 'Resource_Section' /
-            'Fitter_Resource_Utilization_by_Entity.csv',
+            reports['utilization'],
             id_field='Compilation Hierarchy Node',
             field_parser=lambda s: int(s.split()[0]),
             id_parser=lambda s: s.strip()[1:],
@@ -184,7 +195,7 @@ class Quartus(FpgaSynthFlow):
 
         # TODO is this the most reliable timing report?
         slacks = parse_csv(
-            self.reports_dir / 'Timing_Analyzer' / 'Multicorner_Timing_Analysis_Summary.csv',
+            reports['timing'],
             id_field='Clock',
             field_parser=lambda s: float(s.strip()),
             id_parser=lambda s: s.strip(),

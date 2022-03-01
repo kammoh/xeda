@@ -188,6 +188,7 @@ class Flow(Tool, metaclass=MetaFlow):
         rendered_content = template.render(
             settings=self.settings,
             design=self.design,
+            artifacts=self.artifacts,
             **kwargs
         )
         with open(script_path, 'w') as f:
