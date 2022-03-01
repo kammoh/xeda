@@ -3,8 +3,10 @@
 from typing import Literal, Optional
 from pydantic.fields import Field
 import csv
+import logging
 from ..flow import FpgaSynthFlow
 
+log = logging.getLogger(__name__)
 
 def parse_csv(path, id_field: Optional[str], field_parser=(lambda x: x), id_parser=(lambda x: x), interesting_fields=None):
     """Parse TCL-generated CSV file"""
@@ -114,6 +116,8 @@ class Quartus(FpgaSynthFlow):
                         timing_reports[f'fmax_{corner}_{vcc}_{temp}'] = self.reports_dir / 'Timing_Analyzer' / \
                             f'{corner}_{vcc}_{temp}_Model' / \
                             f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv'
+        else:
+            log.critical("self.design.rtl.clock and/or self.settings.clock_period are not set! Timing reports will not be parsed.")
 
     def create_project(self, **kwargs):
         ss = self.settings
