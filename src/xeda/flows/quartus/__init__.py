@@ -70,8 +70,7 @@ class Quartus(FpgaSynthFlow):
                     for temp in ['85C', '0C']:
                         timing_reports[f'fmax_{corner}_{vcc}_{temp}'] = self.reports_dir / 'Timing_Analyzer' / \
                             f'{corner}_{vcc}_{temp}_Model' / \
-                            f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv',
-
+                            f'{corner}_{vcc}_{temp}_Model_Fmax_Summary.csv'
 
     def create_project(self, **kwargs):
         ss = self.settings
