@@ -1,6 +1,5 @@
 set design_name           {{design.name}}
 set top                   {{design.rtl.top}}
-set debug                 {{debug}}
 
 package require ::quartus::project
 package require ::quartus::flow
@@ -9,7 +8,7 @@ project_open ${design_name}
 
 load_package flow
 
-puts "\n===========================( Running flow )==========================="
+puts "\n===========================( Running compile flow )==========================="
 # runs: quartus_map, quartus_fit, quartus_asm, and quartus_sta
 if {[catch {execute_flow -compile} result]} {
     puts "ERROR: Compilation failed. Result: $result. See report files.\n"
