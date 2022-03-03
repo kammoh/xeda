@@ -298,7 +298,8 @@ class Quartus(FpgaSynthFlow):
                 interesting_fields=['Fmax']
             )
             conditions = fmax_report.parts[0].lstrip("Slow_").rstrip("_Model").split("_")
-            self.results[f'Fmax@{":".join(conditions)}'] = fmax['clock']['Fmax']
+            for clock in self.settings.clocks.keys():
+                self.results[f'Fmax@{":".join(conditions)}'] = fmax.get(clock, {}).get('Fmax')
 
         self.results['success'] = not failed
 
