@@ -2,19 +2,15 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
-import pkg_resources
 from pydantic.fields import Field
-import toml
 from pydantic import NoneStr, root_validator, validator
-import os
 from munch import Munch
 
 from ...flows.ghdl import GhdlSynth
 from ...tool import Tool
 from ..flow import FPGA, FpgaSynthFlow, SynthFlow
 
-logger = logging.getLogger(__name__)
-
+log = logging.getLogger(__name__)
 
 
 class Yosys(Tool):
@@ -30,8 +26,6 @@ def append_flag(flag_list: List[str], flag: str):
     if flag not in flag_list:
         flag_list.append(flag)
     return flag_list
-
-
 
 
 class YosysSynth(Yosys, SynthFlow):
@@ -98,7 +92,8 @@ class YosysSynth(Yosys, SynthFlow):
         splitnets: Optional[List[str]] = None  # ['-driver']
         set_attributes: Dict[str, Dict[str, Any]] = {}
         stop_after: Optional[Literal['rtl']]
-        netlistsvg: Optional[str] = Field(None, description="Generate a netlist SVG by runnning 'netlistsvg' (netlistsvg needs to be installed)")
+        netlistsvg: Optional[str] = Field(
+            None, description="Generate a netlist SVG by runnning 'netlistsvg' (netlistsvg needs to be installed)")
 
         @validator('write_verilog_flags', pre=False)
         def validate_write_verilog_flags(cls, value, values):
@@ -134,14 +129,14 @@ class YosysSynth(Yosys, SynthFlow):
                                     f"converted{attr_file} to {type(value)} \n")
                         except json.JSONDecodeError as e:
                             # raise e from None
-                            logger.critical(
+                            log.critical(
                                 f"Decoding of JSON file {attr_file} failed: {e.args}")
                             exit(1)
                         except TypeError as e:
-                            logger.critical(f"JSON TypeError: {e.args}")
+                            log.critical(f"JSON TypeError: {e.args}")
                             exit(1)
                         except Exception as e:
-                            logger.critical(f"Exception: {e.msg}")
+                            log.critical(f"Exception: {e.msg}")
                             exit(1)
                     else:
                         assert False
@@ -265,7 +260,7 @@ class YosysSynth(Yosys, SynthFlow):
                                               ),
                                               artifacts=self.artifacts,
                                               )
-        logger.info(f"Yosys script: {self.run_path / script_path}")
+        log.info(f"Yosys script: {self.run_path / script_path}")
         # args = ['-s', script_path]
         args = ['-c', script_path]
         if ss.log_file:
@@ -273,7 +268,7 @@ class YosysSynth(Yosys, SynthFlow):
         if not ss.verbose:  # reduce noise unless verbose
             args.extend(['-T', '-Q', '-q'])
         self.results['_tool'] = self.info  # TODO where should this go?
-        logger.info(f"Logging yosys output to {ss.log_file}")
+        log.info(f"Logging yosys output to {ss.log_file}")
         self.run_tool(self.default_executable, args)
         skin_file = None
         elk_layout = None
@@ -316,4 +311,3 @@ class YosysSynth(Yosys, SynthFlow):
                     self.artifacts.reports.utilization, r"TRELLIS_FF\s+(?P<FFs>\d+)", r"LUT4\s+(?P<LUT4>\d+)")
         self.results['success'] = True  # FIXME
         return True
-

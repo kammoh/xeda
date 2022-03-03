@@ -12,7 +12,7 @@ puts "\n===========================( Running compile flow )=====================
 # runs: quartus_map, quartus_fit, quartus_asm, and quartus_sta
 if {[catch {execute_flow -compile} result]} {
     puts "ERROR: Compilation failed. Result: $result. See report files.\n"
-    exit 1
+    qexit -error
 }
 
 puts "clocks: [get_clocks]"
@@ -25,14 +25,20 @@ load_report
 
 set panel "Timing Analyzer||Setup Summary"
 set panel_id [get_report_panel_id $panel]
-set setup_slack [get_report_panel_data -col_name Slack -row 1 -id $panel_id]
 
-puts ""
-puts "-----------------------------------------------------"
-puts "Setup Slack: $setup_slack"
-puts "-----------------------------------------------------"
-puts ""
-
+# negative if panel not found
+if {$panel_id > 0} {   
+    set setup_slack [get_report_panel_data -col_name Slack -row 1 -id $panel_id]
+    puts ""
+    puts "-----------------------------------------------------"
+    puts "Setup slack: $setup_slack"
+    puts "-----------------------------------------------------"
+    puts ""
+    if {$setup_slack<0} {
+        puts "\[ERROR\] Timing not met!"
+        # qexit -error
+    }
+}
 
 
 set panel_names [get_report_panel_names]

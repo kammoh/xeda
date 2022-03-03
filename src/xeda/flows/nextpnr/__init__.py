@@ -1,19 +1,14 @@
-import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Optional
 import pkg_resources
-from pydantic.fields import Field
 import toml
-from pydantic import NoneStr, root_validator, validator
+from pydantic import NoneStr
 import os
-from munch import Munch
-
 from ...flows.yosys import YosysSynth
-from ...tool import Tool
-from ..flow import FPGA, FpgaSynthFlow, SynthFlow
+from ..flow import FPGA, FpgaSynthFlow
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def get_board_data(board):

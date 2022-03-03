@@ -18,6 +18,7 @@ from .design import Design, XedaBaseModel
 from ..tool import Tool
 from ..utils import backup_existing, camelcase_to_snakecase, try_convert
 from ..debug import DebugLevel
+from .cocotb import Cocotb
 
 log = logging.getLogger(__name__)
 
@@ -349,46 +350,21 @@ class Flow(Tool, metaclass=ABCMeta):
         return True
 
 
-class Cocotb(Tool):
-    """Cocotb support for a SimFlow"""
-    """Not an autonomous tool. Requires instance of a simulation tool"""
-
-    def __init__(self, sim_tool: 'SimFlow'):
-        if not sim_tool.cocotb_sim_name:
-            log.warning("Cocotb requires a cocotb-simulation tool")
-            return
-        super().__init__(sim_tool.settings, sim_tool.run_path)
-        self.sim_tool = sim_tool
-
-    def get_version(self):
-        return self.sim_tool.run_tool("cocotb-config", ["--version"], stdout=True)
-
-    def vpi_path(self):
-        cocotb_name = self.sim_tool.cocotb_sim_name
-        so_ext = "so"  # TODO?
-        if self.version_minor >= 5:
-            so_path = self.sim_tool.run_tool("cocotb-config",
-                                             ["--lib-name-path", "vpi", cocotb_name], stdout=True)
-        else:
-            so_path = self.sim_tool.run_tool("cocotb-config",
-                                             ["--prefix"], stdout=True, check=True
-                                             ) + f"/cocotb/libs/libcocotbvpi_{cocotb_name}.{so_ext}"
-
-        log.warn(f"cocotb.vpi_path = {so_path}")
-        return so_path
-
-
 class SimFlow(Flow):
     cocotb_sim_name: NoneStr = None
 
     class Settings(Flow.Settings):
         vcd: Union[None, str, bool] = None
         stop_time: Union[None, str, int, float] = None
+        cocotb: Cocotb.Settings = Cocotb.Settings()
 
     def __init__(self, flow_settings: 'SimFlow.Settings', design: Design, run_path: Path):
         self.settings: SimFlow.Settings = flow_settings
         super().__init__(flow_settings, design, run_path)
-        self.cocotb = Cocotb(self)
+
+        self.cocotb: Optional[Cocotb] = Cocotb(
+            self.settings.cocotb, self.cocotb_sim_name, self.run_path
+        ) if self.cocotb_sim_name else None
 
     def parse_reports(self):
         self.results['success'] = True

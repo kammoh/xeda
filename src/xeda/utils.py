@@ -20,14 +20,15 @@ def backup_existing(path: Path):
     if path.suffix:
         suffix += path.suffix
     backup_path = path.with_suffix(suffix)
-    logger.warning(f"Backing-up existing '{path.name}' to '{backup_path.name}'")
-    os.rename(path, backup_path)
+    typ = "file" if path.is_file() else "directory" if path.is_dir() else "???"
+    logger.warning(f"Renaming existing {typ} '{path.name}' to '{backup_path.name}'")
+    os.rename(path, backup_path)  # TODO use shutil.move instead?
 
 
 def dump_json(data, path: Path):
     if path.exists():
         backup_existing(path)
-    
+
     assert not path.exists(), "Old file still exists!"
 
     with open(path, 'w') as outfile:
@@ -106,6 +107,3 @@ def try_convert(s, convert_lists=False, to_str=True):
             if s1.lower in ['false', 'no']:
                 return False
             return s1 if to_str else s
-
-
-
