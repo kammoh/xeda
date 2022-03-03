@@ -91,20 +91,25 @@ begin
             else
                 case state is
                     when S_IDLE =>
-                        if radicand_valid then
-                            counter  <= (others => '0');
-                            q        <= (others => '0');
-                            (acc, x) <= resize(unsigned(radicand), 2 * W);
-                            state    <= S_BUSY;
+                        if radicand_valid = '1' then
+                            counter <= (others => '0');
+                            q       <= (others => '0');
+                            -- (acc, x) <= resize(unsigned(radicand), 2 * W);
+                            x       <= unsigned(radicand(W - 3 downto 0));
+                            acc     <= resize(unsigned(radicand(radicand'length - 1 downto W - 2)), W + 2);
+                            state   <= S_BUSY;
                         end if;
                     when S_BUSY =>
                         counter <= counter + 1;
-                        if test_res_msb then -- test_res < 0
-                            (acc, x) <= acc(acc'length - 3 downto 0) & x & "00";
+                        if test_res_msb = '1' then -- test_res < 0
+                            -- (acc, x) <= acc(acc'length - 3 downto 0) & x & "00";
+                            acc <= acc(acc'length - 3 downto 0) & x(W - 3 downto W - 4);
                         else
-                            (acc, x) <= test_res(acc'length - 3 downto 0) & x & "00";
+                            -- (acc, x) <= test_res(acc'length - 3 downto 0) & x & "00";
+                            acc <= test_res(acc'length - 3 downto 0) & x(W - 3 downto W - 4);
                         end if;
                         q <= q(q'length - 2 downto 0) & not test_res_msb;
+                        x <= unsigned(x(W - 5 downto 0)) & "00";
                         if counter = ITER - 1 then
                             state <= S_DONE;
                         end if;
