@@ -297,7 +297,7 @@ class Quartus(FpgaSynthFlow):
                 id_parser=lambda s: s.strip(),
                 interesting_fields=['Fmax']
             )
-            conditions = fmax_report.parts[0].lstrip("Slow_").rstrip("_Model").split("_")
+            conditions = fmax_report.parent.name.lstrip("Slow_").rstrip("_Model").split("_")
             for clock in self.settings.clocks.keys():
                 self.results[f'Fmax@{":".join(conditions)}'] = fmax.get(clock, {}).get('Fmax')
 
