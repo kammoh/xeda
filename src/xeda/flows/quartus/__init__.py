@@ -288,16 +288,17 @@ class Quartus(FpgaSynthFlow):
             log.critical("No timing summary report is available")
 
         timing_reports_folder: Path = timing_reports['*']
-        for csv_file in timing_reports_folder.glob('Slow_*/*.csv'):
-            log.info(f"Parsing timing report: {csv_file}")
+        for fmax_report in timing_reports_folder.glob('Slow_*_Model/Slow_*_Model_Fmax_Summary.csv'):
+            log.info(f"Parsing timing report: {fmax_report}")
             fmax = parse_csv(
-                csv_file,
+                fmax_report,
                 id_field='Clock Name',
                 field_parser=lambda s: s.strip().split(),
                 id_parser=lambda s: s.strip(),
                 interesting_fields=['Fmax']
             )
-            self.results[f'fmax_{temp}'] = fmax['clock']['Fmax']
+            conditions = fmax_report.parts[0].lstrip("Slow_").rstrip("_Model").split("_")
+            self.results[f'Fmax@{":".join(conditions)}'] = fmax['clock']['Fmax']
 
         self.results['success'] = not failed
 
