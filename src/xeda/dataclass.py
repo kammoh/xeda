@@ -51,6 +51,7 @@ __all__ = [
     "ConfigDict",
     "DELIVERABLE_ROLE",
     "LOCATOR",
+    "PRESENTATION",
     "TierName",
     "WORKING",
     "WORKING_ROLE",
@@ -75,6 +76,7 @@ __all__ = [
     "field_shorthands_of",
     "is_locator",
     "is_mistake",
+    "is_presentation",
     "mapping_form",
     "nested_model",
     "opaque_key_fields_of",
@@ -791,6 +793,22 @@ def is_locator(model: type[BaseModel], field: str) -> bool:
     info = model.model_fields.get(field)
     extra = info.json_schema_extra if info is not None else None
     return isinstance(extra, dict) and extra.get("x-xeda-locator") is True
+
+
+#: The marker of a setting that only changes what Xeda or a tool prints on the console (`quiet`),
+#: as a `json_schema_extra` marker. Such a setting is no part of the identity of a run: the
+#: identity sees the default of the field in its place. The mark is a claim about every flow
+#: that reads the setting. No tool may write another file, or the same file with other content,
+#: that the flow later reads or delivers (a report, a log that a parser reads, an output). A
+#: setting that changes any of that is not presentation, however it is named.
+PRESENTATION: Dict[str, Any] = {"x-xeda-presentation": True}
+
+
+def is_presentation(model: type[BaseModel], field: str) -> bool:
+    """Return whether the `field` of `model` is marked `PRESENTATION`."""
+    info = model.model_fields.get(field)
+    extra = info.json_schema_extra if info is not None else None
+    return isinstance(extra, dict) and extra.get("x-xeda-presentation") is True
 
 
 #: The tier of a setting: how often a user needs it. It is metadata for documentation and

@@ -148,6 +148,10 @@ and only for a passed or rejected run (`tests/test_rejected_verdicts.py`).
   destination (`tests/test_deliverable_identity.py`).
 - A setting that names where installed data lives (`pdk_root`) carries `LOCATOR`: no part of the
   identity, never traversed; the flow registers the exact files (`tests/test_locator_settings.py`).
+- A bool that only changes what Xeda or a tool prints (`quiet`, `print_commands`,
+  `redirect_stdout`) carries `PRESENTATION`: the identity sees the field default. Mark nothing that
+  changes a file a flow reads or delivers (`verbose`, `debug`); a redeclared field drops the mark
+  (`tests/test_presentation_settings.py`).
 - A provider with a layout of its own (`lambdapdk`) gives its own `files` and `values` in its
   residue entry. Every `effective_residue` call passes the provider argument explicitly: the
   selected provider, or `None` for the default provider of the layers

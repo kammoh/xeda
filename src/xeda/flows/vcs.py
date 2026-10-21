@@ -126,6 +126,8 @@ class Vcs(SimFlow):
             "needs. This slows elaboration.",
         )
         supress_banner: bool = Field(True, description="Suppress the VCS copyright banner (`-nc`).")
+        # Not `PRESENTATION`: `-q` also goes to `vcs -R`, whose output is the runtime log that the
+        # finish evidence reads, and no licensed VCS was available to show that `-q` keeps it.
         quiet: bool = Field(False, description="Suppress informational output from VCS.")
         vhdl_xlrm: bool = Field(
             False, description="Enable VHDL features beyond the LRM (`vhdlan -xlrm`)."

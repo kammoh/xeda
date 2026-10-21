@@ -211,10 +211,20 @@ nothing with it.
     Run the tools of the flow from a container image instead of the local installation.
 
 ``quiet`` / ``verbose`` / ``debug``
-    How much the flow and its tools print.
+    How much the flow and its tools print. ``verbose`` and ``debug`` also change what some tools
+    do, such as extra tool flags and script steps, so they are part of the identity of a run.
+
+``print_commands``
+    Print the command line of every tool that the flow starts.
 
 ``redirect_stdout``
     Send the output of the tools to files instead of the console. Only the Vivado flows do this.
+
+``quiet``, ``print_commands`` and ``redirect_stdout`` only change what Xeda or a tool prints, never
+a file that a flow reads or delivers. They are no part of the identity of a run: a finished flow is
+up to date after you change one of them, and its run directory and hash stay the same. They apply
+to the flows you give them to, and a producer does not inherit them from a flow that depends on it.
+The one exception is ``quiet`` of the ``vcs`` flow, which stays part of its identity.
 
 ``lib_paths``
     Additional HDL libraries, as ``(name, path)`` pairs. GHDL, ModelSim, NVC and the Vivado

@@ -112,7 +112,8 @@ The ``flow_settings`` key holds the run's input: the layers merged key by key, f
 defaults, the project's and the design file's ``flows.<flow>`` sections (the selected target's
 included) and the ``-s`` items of the command line. Xeda computes the identity of the run from these
 settings. A deliverable that has a location counts as the name the run writes under (see `Outputs
-where you name them`_). You can feed the settings back to reproduce the run.
+where you name them`_). A setting that only changes what is printed (``quiet``) counts as its
+default. You can feed the settings back to reproduce the run.
 
 The ``effective_flow_settings`` key holds what the flow made of the input while it prepared and ran:
 resolved paths, derived options and generated outputs. It shows the difference between what you

@@ -39,6 +39,7 @@ from pydantic_core import ErrorDetails, InitErrorDetails
 
 from ..dataclass import (
     DELIVERABLE_ROLE,
+    PRESENTATION,
     WORKING,
     WORKING_ROLE,
     BaseModel,
@@ -56,6 +57,7 @@ from ..dataclass import (
     fold_dotted_keys,
     input_names,
     is_locator,
+    is_presentation,
     model_validator,
     nested_model,
     opaque_key_declaration_problems,
@@ -624,8 +626,9 @@ def identity_settings(
     directory (`output_name`). That holds for a deliverable given as a location, and for one that
     the flow always writes (`deliverable(always=True)`) and that is unset. Where an output is
     delivered, and what it is called there, is no part of the run. A locator (`LOCATOR`) is None
-    in the copy: where installed data lives is no part of the run either. Without `design_name`,
-    `{design}` stays as written."""
+    in the copy: where installed data lives is no part of the run either. A presentation setting
+    (`PRESENTATION`) has its default in the copy: what is printed is no part of the run. Without
+    `design_name`, `{design}` stays as written."""
     copy = settings.model_copy(deep=True)
     design = design_name if design_name is not None else "{design}"
 
@@ -640,21 +643,27 @@ def identity_settings(
 
     map_written_leaves(copy, conventional)
     _name_unset_outputs(copy, design)
-    _clear_locators(copy)
+    _clear_what_is_no_part_of_the_run(copy)
     return copy
 
 
-def _clear_locators(model: BaseModel) -> None:
-    """Set, in place, each locator setting (`LOCATOR`) of `model` and of the models nested in it
-    to None. A place on this machine is no part of the identity of a run."""
-    for name in type(model).model_fields:
+def _clear_what_is_no_part_of_the_run(model: BaseModel) -> None:
+    """Change, in place, each setting of `model` and of the models nested in it that is no part of
+    the identity of a run. A locator (`LOCATOR`, a place on this machine) becomes None. A
+    presentation setting (`PRESENTATION`, what is printed) becomes the default of its field."""
+    for name, info in type(model).model_fields.items():
         value = getattr(model, name)
         if is_locator(type(model), name):
             if value is not None:
                 setattr(model, name, None)
             continue
+        if is_presentation(type(model), name):
+            default = info.get_default(call_default_factory=True)
+            if value != default:
+                setattr(model, name, default)
+            continue
         for _key, nested in _nested_models(value, name):
-            _clear_locators(nested)
+            _clear_what_is_no_part_of_the_run(nested)
 
 
 def _name_unset_outputs(model: BaseModel, design: str, prefix: str = "") -> None:
@@ -1174,10 +1183,14 @@ class Flow(metaclass=ABCMeta):
             "instead of being reported as a failure.",
         )
         quiet: bool = Field(
-            False, description="Run the flow quietly, unless `verbose` or `debug` is set."
+            False,
+            description="Run the flow quietly, unless `verbose` or `debug` is set.",
+            json_schema_extra=PRESENTATION,
         )
         redirect_stdout: bool = Field(
-            False, description="Redirect stdout from execution of tools to files."
+            False,
+            description="Redirect stdout from execution of tools to files.",
+            json_schema_extra=PRESENTATION,
         )
         nthreads: Optional[int] = Field(
             None,
@@ -1215,7 +1228,11 @@ class Flow(metaclass=ABCMeta):
             "flow.",
         )
         dockerized: bool = Field(False, description="Run the tools in Docker.")
-        print_commands: bool = Field(True, description="Print the commands that the flow runs.")
+        print_commands: bool = Field(
+            True,
+            description="Print the commands that the flow runs.",
+            json_schema_extra=PRESENTATION,
+        )
         console_colors: bool = Field(True, description="Colorize tool output on the console.")
 
         @classmethod

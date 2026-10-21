@@ -149,6 +149,8 @@ xeda run nextpnr blinky.yaml -s flows.yosys_fpga.flatten=true
   flows read `lib_paths`. `ghdl_sim`, `ghdl_synth` and `nvc` take a relative path as relative to the
   design root. `nvc` maps `(name, path)` with `--map=name:path`, passes `(None, path)` as `-L path`
   (a directory that holds library directories) and refuses an entry that has a name and no path.
+  `quiet`, `print_commands` and `redirect_stdout` only change what is printed: they are no part of
+  the identity of a run, so changing one starts nothing again (`vcs` keeps its own `quiet` in it).
 - A flow uses every other setting it lists, and refuses a setting of a related flow:
   - The message names the flow that has it: `vivado_project` refuses `elab_debug`, `stop_time` and
     the other `vivado_sim` settings ("use `flows.vivado_sim.<name>`"); `ghdl_synth` refuses
