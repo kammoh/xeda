@@ -73,7 +73,6 @@ from ..run_dir import (
 )
 from ..run_root import DEFAULT_RUN_ROOT, ensure_run_root
 from ..utils import (
-    WorkingDirectory,
     XedaException,
     backup_existing,
     dump_json,
@@ -1284,18 +1283,17 @@ class FlowLauncher:
                 design_failure = e
                 derived = planned_view
                 design_hash = ""
-            with WorkingDirectory(run_path):
-                log.debug("Instantiating flow from %s", flow_class)
-                # A copy of each, which the flow completes for itself. The design, like the
-                # settings, has been hashed already, is recorded beside that hash, and goes on to
-                # the producers of the flow, none of which may see what the flow does to it.
-                flow = flow_class(
-                    input_settings.model_copy(deep=True),
-                    derived.model_copy(deep=True),
-                    run_path,
-                    runner_cwd=runner_cwd,
-                    run_directory=run_directory,
-                )
+            log.debug("Instantiating flow from %s", flow_class)
+            # A copy of each, which the flow completes for itself. The design, like the
+            # settings, has been hashed already, is recorded beside that hash, and goes on to
+            # the producers of the flow, none of which may see what the flow does to it.
+            flow = flow_class(
+                input_settings.model_copy(deep=True),
+                derived.model_copy(deep=True),
+                run_path,
+                runner_cwd=runner_cwd,
+                run_directory=run_directory,
+            )
             untouched = False
             try:
                 flow.design_hash = design_hash
@@ -1307,8 +1305,7 @@ class FlowLauncher:
                 try:
                     if design_failure is not None:
                         raise design_failure
-                    with WorkingDirectory(run_path):
-                        flow.init()
+                    flow.init()
                     producers = launch_producers.run_producers(
                         flow,
                         design,
