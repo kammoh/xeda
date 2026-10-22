@@ -45,6 +45,8 @@ from pydantic import model_validator as _pydantic_model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import ErrorDetails, InitErrorDetails, PydanticCustomError, PydanticUndefined
 
+from .units import QuantityJsonSchema
+
 __all__ = [
     "AliasChoices",
     "Code",
@@ -1101,6 +1103,13 @@ class XedaBaseModel(BaseModel):
     #: way it is given (`fold_dotted_keys`). A flow declares its own fields, and a group declares
     #: the fields of the group. A subclass adds to those of its bases (`opaque_key_fields_of`).
     opaque_key_fields: ClassVar[Tuple[str, ...]] = ()
+
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Return the JSON Schema of the model, with the default of a quantity written in the
+        unit of its field."""
+        kwargs.setdefault("schema_generator", QuantityJsonSchema)
+        return super().model_json_schema(*args, **kwargs)
 
     @classmethod
     def as_mapping(cls, value: Any) -> Any:

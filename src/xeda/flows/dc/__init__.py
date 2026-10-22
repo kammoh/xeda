@@ -2,7 +2,7 @@ import logging
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
+from typing import Annotated, ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
 import colorama
 from box import Box
@@ -18,7 +18,7 @@ from ...flow import (
     describe_results,
 )
 from ...tool import Tool
-from ...units import Time, count
+from ...units import Time, Unit, count
 from ...utils import try_convert, try_convert_to_primitives
 
 log = logging.getLogger(__name__)
@@ -227,12 +227,12 @@ class Dc(AsicSynthFlow):
             description="Target library or libraries (liberty `.db` files). Required: the flow "
             "refuses to launch without one.",
         )
-        default_max_input_delay: Optional[Time] = Field(
+        default_max_input_delay: Optional[Annotated[Time, Unit("ns")]] = Field(
             Time("0 ns"),
             description="Default maximum delay of all non-clock input ports, a time with a "
             "unit, such as `1.5 ns`.",
         )
-        default_max_output_delay: Optional[Time] = Field(
+        default_max_output_delay: Optional[Annotated[Time, Unit("ns")]] = Field(
             Time("0 ns"),
             description="Default maximum delay of all output ports, a time with a unit, such as "
             "`1.5 ns`.",
