@@ -2,21 +2,22 @@
 results point at it."""
 
 import io
-import json
 import os
 from pathlib import Path, PurePosixPath
 
 import pytest
 
-from xeda.deliver import DeliveryError
+from xeda.deliver import Deliveries, DeliveryError, ReadInputs
 from xeda.digest import content_digest
+from xeda.records import decode_record
+from xeda.run_root import ensure_run_root
 from xeda.remote.errors import RemoteFetchError, RemoteProtocolError
 from xeda.remote.fetch import (
     NodeResult,
-    external_place,
-    mirror_relative,
+    check_fetched_outputs,
+    deliver_fetched,
+    only_fetched_artifacts,
     publish_mirror,
-    rewrite_results,
     select_fetch,
 )
 from xeda.remote.manifest import Entry, build_manifest, write_tar
@@ -220,17 +221,6 @@ def test_a_named_output_that_is_a_link_is_not_taken(tmp_path, inside):
     assert "d/flow/linked.bit" not in select_fetch(tmp_path, [failed], fetch_all=False)
 
 
-def test_mirror_relative_keeps_a_place_in_the_run_directory_and_files_the_rest_by_digest():
-    run = "/remote/xeda_run/d/flow"
-    assert mirror_relative("reports/a.rpt", run) == PurePosixPath("reports/a.rpt")
-    assert mirror_relative(f"{run}/out/b.bit", run) == PurePosixPath("out/b.bit")
-    outside = mirror_relative("/remote/other/b.bit", run)
-    assert outside == external_place("/remote/other/b.bit")
-    assert outside.parts[0] == "_external" and outside.name == "b.bit"
-    assert mirror_relative("../up/b.bit", run) == external_place("/remote/xeda_run/d/up/b.bit")
-    assert external_place("/a/x.bit") != external_place("/b/x.bit")
-
-
 # --------------------------------------------------------------------------------- the mirror
 
 
@@ -420,80 +410,54 @@ def _mirror_with(tmp_path: Path, *names: str) -> Path:
     return mirror_dir
 
 
-def test_results_point_at_the_mirror(tmp_path):
-    remote = PurePosixPath("/remote/xeda_run/d/flow")
-    mirror_dir = _mirror_with(tmp_path, "other/x.v", "out.bit")
-    output = mirror_dir / "other" / "x.v"
-    results = {
-        "success": True,
-        "run_path": str(remote),
-        "artifacts": {
-            "netlist": "other/x.v",
-            "bit": [f"{remote}/out.bit", "/remote/elsewhere/e.bin"],
-            "none": None,
-        },
-        "outputs": {
-            "netlist": {"path": f"{remote}/other/x.v", "sha": content_digest(output)},
-        },
-    }
-    original = json.dumps(results)
-    rewritten = rewrite_results(results, remote, mirror_dir)
-    assert json.dumps(results) == original, "the argument stays as it is"
-    assert rewritten["run_path"] == str(mirror_dir)
-    # a file outside the run directory is in no record and does not come back: it is left out
-    assert rewritten["artifacts"] == {
-        "netlist": str(mirror_dir / "other/x.v"),
-        "bit": [str(mirror_dir / "out.bit")],
-        "none": None,
-    }
-    assert rewritten["outputs"]["netlist"]["path"] == str(output)
-
-
-def test_an_artifact_that_is_not_in_the_mirror_is_an_error(tmp_path):
-    remote = PurePosixPath("/remote/xeda_run/d/flow")
-    mirror_dir = _mirror_with(tmp_path, "out.bit")
-    results = {"success": True, "artifacts": {"bit": "out.bit", "gone": "gone.bit"}}
-    with pytest.raises(RemoteFetchError, match="gone.bit"):
-        rewrite_results(results, remote, mirror_dir)
-
-
-def test_a_failed_node_keeps_only_the_artifacts_its_run_wrote(tmp_path):
-    remote = PurePosixPath("/remote/xeda_run/d/flow")
-    mirror_dir = _mirror_with(tmp_path, "written.bit", "earlier.bit", "gone.bit")
-    (mirror_dir / "gone.bit").unlink()
-    results = {
-        "success": False,
-        "flow": "flow",
-        "artifacts": {
-            "written": "written.bit",
-            "earlier": "earlier.bit",
-            "gone": "gone.bit",
-            "outside": "/remote/elsewhere/e.bin",
-        },
-    }
-    rewritten = rewrite_results(
-        results, remote, mirror_dir, written=frozenset({"written.bit", "gone.bit"})
-    )
-    assert rewritten["artifacts"] == {"written": str(mirror_dir / "written.bit")}
-    # with no word from the remote about what the run wrote, none is kept
-    assert rewrite_results(results, remote, mirror_dir)["artifacts"] == {}
+def _record(mirror_dir: Path, outcome: str = "passed", **fields):
+    document = record_document(outcome, **fields)
+    return decode_record(document, run_dir=mirror_dir, run_root=mirror_dir.parents[1])
 
 
 def test_a_declared_output_that_changed_during_the_transfer_is_refused(tmp_path):
-    remote = PurePosixPath("/remote/xeda_run/d/flow")
     mirror_dir = _mirror_with(tmp_path, "x.v")
-    results = {
-        "success": True,
-        "outputs": {"n": {"path": f"{remote}/x.v", "sha": "0" * 32}},
-    }
+    record = _record(mirror_dir, outputs={"n": ["x.v"]})  # the digest is not the file's
     with pytest.raises(DeliveryError, match="changed during transfer"):
-        rewrite_results(results, remote, mirror_dir)
+        check_fetched_outputs(record)
     (mirror_dir / "x.v").unlink()
     with pytest.raises(DeliveryError, match="not in the mirror"):
-        rewrite_results(results, remote, mirror_dir)
+        check_fetched_outputs(record)
 
 
-def test_a_failed_node_has_no_declared_outputs(tmp_path):
-    remote = PurePosixPath("/remote/xeda_run/d/flow")
-    results = {"success": False, "outputs": {"n": {"path": f"{remote}/x.v", "sha": "0"}}}
-    assert "outputs" not in rewrite_results(results, remote, tmp_path)
+def test_a_declared_output_with_the_recorded_digest_passes_the_check(tmp_path):
+    mirror_dir = _mirror_with(tmp_path, "x.v")
+    document = record_document("passed", outputs={"n": ["x.v"]})
+    document["outputs"]["n"]["digests"] = [content_digest(mirror_dir / "x.v")]
+    check_fetched_outputs(
+        decode_record(document, run_dir=mirror_dir, run_root=mirror_dir.parents[1])
+    )
+
+
+def test_a_node_that_did_not_pass_has_no_declared_output_to_check(tmp_path):
+    mirror_dir = _mirror_with(tmp_path)
+    check_fetched_outputs(_record(mirror_dir, "failed", outputs={"n": ["x.v"]}))
+
+
+def test_the_record_of_a_failed_node_names_only_the_artifacts_that_came_back(tmp_path):
+    mirror_dir = _mirror_with(tmp_path, "written.bit")
+    failed = record_document("failed", artifacts={"a": "written.bit", "b": "gone.bit"})
+    assert only_fetched_artifacts(failed, mirror_dir)["artifacts"] == {"a": "written.bit"}
+    passed = record_document("passed", artifacts={"a": "written.bit", "b": "gone.bit"})
+    assert only_fetched_artifacts(passed, mirror_dir) is passed
+
+
+def test_a_remote_run_that_did_not_pass_delivers_nothing(tmp_path):
+    root = ensure_run_root(tmp_path / "root")
+    assert root is not None
+    mirror = root / "@host" / "d" / "flow"
+    mirror.mkdir(parents=True)
+    (mirror / "a.txt").write_text("fetched\n")
+    for outcome in ("failed", "passed"):
+        record = decode_record(
+            record_document(outcome, artifacts={"a": "a.txt"}), run_dir=mirror, run_root=root
+        )
+        delivery = Deliveries(mirror, root, inputs=ReadInputs())
+        delivered = deliver_fetched(delivery, record, outputs_to=tmp_path / "got")
+        assert (tmp_path / "got" / "a.txt").exists() is (outcome == "passed")
+        assert bool(delivered) is (outcome == "passed")
