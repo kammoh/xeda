@@ -7,14 +7,14 @@ from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, List, Literal, Optional, Union
 
-from ...dataclass import Field, XedaBaseModel, field_validator, waveform
+from ...dataclass import Field, XedaBaseModel, waveform
 from ...design import DesignSource, SourceType, VhdlSettings
 from ...flow import Flow, FlowSettingsException, SimFlow, describe_results
 from ...flow.metrics import COCOTB_METRICS
 from ...flow.sim import SimEvidence
 from ...flow.sim_evidence import parse_nvc_log, read_sim_log
 from ...tool import Tool
-from ...units import convert_unit, count
+from ...units import count
 from ...utils import LOCATION_FORMS
 
 log = logging.getLogger(__name__)
@@ -213,13 +213,6 @@ class Nvc(SimFlow):
             False,
             description="Print a summary of the time taken and memory used at the end of the run.",
         )
-
-        @field_validator("stop_time", mode="before")
-        @classmethod
-        def validate_stop_time(cls, value):
-            if value is not None and convert_unit(value, "fs", from_unit="ns") < 0:
-                raise ValueError("stop_time must be nonnegative")
-            return value
 
         def runtime_flags(self) -> list[str]:
             """Return `run_flags` with the `--exit-severity` that `fail_severity` selects.
@@ -437,11 +430,7 @@ class Nvc(SimFlow):
         if evidence.ended_by == "unknown":
             ss = self.settings
             assert isinstance(ss, self.Settings)
-            stop = (
-                round(convert_unit(ss.stop_time, "fs", from_unit="ns"))
-                if ss.stop_time is not None
-                else None
-            )
+            stop = round(ss.stop_time.to("fs")) if ss.stop_time is not None else None
             # A queue with an event beyond the bound confirms a native cutoff. Equality of
             # end time alone proves nothing; judge_evidence separately enforces exact time.
             if (
@@ -490,7 +479,7 @@ class Nvc(SimFlow):
         if ss.stop_delta is not None:
             run_flags.append(f"--stop-delta={ss.stop_delta}")
         if ss.stop_time is not None:
-            stop_fs = convert_unit(ss.stop_time, "fs", from_unit="ns")
+            stop_fs = ss.stop_time.to("fs")
             run_flags.append(f"--stop-time={stop_fs:.0f}fs")
         if ss.stats:
             run_flags.append("--stats")
@@ -518,7 +507,9 @@ class Nvc(SimFlow):
             self._end_record = self.run_directory.writable("nvc_end.json")
             env["XEDA_NVC_END_RECORD"] = "nvc_end.json"
             runtime = self.nvc.derive(self.nvc.executable, redirect_stdout=None)
-        options = dict(env=env, timeout=ss.timeout, tee=self._sim_log, merge_stderr=True)
+        options = dict(
+            env=env, timeout=ss.timeout_in_seconds(), tee=self._sim_log, merge_stderr=True
+        )
         if one_shot:
             sources = self.sources_read(tb=True)
             runtime.run(
