@@ -336,7 +336,7 @@ By default Xeda fetches, for every flow of the plan:
 
 For the flow that the request names, it also fetches the declared outputs and the artifacts. A
 flow that failed returns only the files that its run wrote, and no declared outputs. A file outside
-the run directory comes back only from a flow that succeeded, under ``_external/<digest>/``.
+the run directory is in no record of a run (see :ref:`results-json`), so it does not come back.
 
 ``--fetch-all`` fetches every file of the run directories, ``trace.json`` excepted. Use it to look
 at the intermediate files of a tool.
