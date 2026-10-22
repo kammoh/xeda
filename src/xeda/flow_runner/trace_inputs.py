@@ -73,6 +73,7 @@ from ..deliver import ReadInputs
 from ..flow.flow import _annotation_contains_path, map_keyed_path_leaves
 from ..listing import VCS_METADATA, directory_files
 from ..proc_utils import DOCKER_IMAGE_PREFIX, program_state
+from ..records import ErrorInfo
 from ..version import __version__
 from .run_lock import lock_file
 from .trace import (
@@ -1097,12 +1098,5 @@ def build_trace(
         reports=run_reports(flow),
         declared_inputs=[_consumed(record, snapshot) for record in expected.declared_inputs],
         verdict="rejected" if rejected else "passed",
-        error=(
-            {
-                "type": str(flow.results["error"]["type"]),
-                "message": str(flow.results["error"]["message"]),
-            }
-            if rejected
-            else None
-        ),
+        error=ErrorInfo.from_json(flow.results["error"]).as_json_value() if rejected else None,
     )

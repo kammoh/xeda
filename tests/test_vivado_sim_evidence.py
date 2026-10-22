@@ -158,13 +158,13 @@ def test_vivado_script_errors_override_finish(tmp_path, monkeypatch, command):
     monkeypatch.setenv("XEDA_FAKE_TOOL_FAIL", command)
     flow = launch(tmp_path, monkeypatch, "finish5", {"vcd": True, "saif": "activity.saif"})
     assert not flow.succeeded
-    assert flow.results["error"]["type"] == "NonZeroExitCode"
+    assert flow.results["error"]["code"] == "nonzero_exit"
 
 
 def test_vivado_timeout_is_applied_to_combined_process(tmp_path, monkeypatch):
     flow = launch(tmp_path, monkeypatch, "timeout", {"timeout": 2.0})
     assert not flow.succeeded
-    assert flow.results["error"]["type"] == "ProcessTimeout"
+    assert flow.results["error"]["code"] == "timeout"
 
 
 @pytest.mark.parametrize("state", ["silent", "error", "fatal"])
@@ -176,10 +176,7 @@ def test_vivado_power_activity_failure_prevents_power_report(tmp_path, monkeypat
     with pytest.raises(FlowDependencyFailure):
         launch(tmp_path, monkeypatch, state, flow_class=VivadoPower)
     run_path = tmp_path / "run" / "sim" / "vivado_power"
-    assert (
-        json.loads((run_path / "results.json").read_text())["error"]["type"]
-        == "FlowDependencyFailure"
-    )
+    assert json.loads((run_path / "results.json").read_text())["error"]["code"] == "producer_failed"
     assert not (run_path / "vivado_power.tcl").exists()
 
 
@@ -327,7 +324,7 @@ def test_vivado_power_propagates_failing_simulation_controls(
     if state == "warning":
         assert result["sim.warnings"] == 1
     else:
-        assert result["error"]["type"] == "ProcessTimeout"
+        assert result["error"]["code"] == "timeout"
 
 
 @pytest.mark.parametrize("quantity", ["10", "10 ns", "1e1ns", "0ns"])
