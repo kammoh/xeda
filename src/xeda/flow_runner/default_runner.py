@@ -575,7 +575,6 @@ class FlowLauncher:
         self.design_name: str | None = None
         self._plans: dict[int, tuple[Plan, Any, Any]] = {}
         self._planned_completed: dict[tuple[int, NodeKey], Flow] = {}
-        self.last_plan: Plan | None = None
         #: What the current launch reports as it goes on (`launch_result.launch_result` reads it).
         self.collector = LaunchCollector()
         self._completed_runs: dict[Path, tuple[Flow, CompletedRun]] = {}
@@ -1953,8 +1952,6 @@ class FlowLauncher:
     @with_debug_logging
     def run_resolved(self, request: _Request, plan: Plan) -> Optional[Flow]:
         """Execute the request and plan that `resolve_run` returned."""
-        #: The plan this run follows, for reporting.
-        self.last_plan = plan
         previous, self._request_context = self._request_context, request
         try:
             return self.run_flow(
