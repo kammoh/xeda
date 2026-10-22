@@ -41,6 +41,7 @@ import yaml
 from click.testing import CliRunner
 
 import xeda
+from xeda.flow import MetricSpec
 from xeda import Design
 from xeda.cli import cli
 from xeda.flow import Flow, SimFlow
@@ -2351,7 +2352,7 @@ def test_links_a_tool_left_are_never_followed_out_of_the_run_directory(tmp_path,
     class LinkLeaver(Flow):
         """Leaves every kind of link in its run directory, as a tool may."""
 
-        results_description: dict = {}
+        results_description: dict[str, MetricSpec] = {}
 
         class Settings(Flow.Settings):
             work_dir: Path = Field(Path("work"), description="its work.", json_schema_extra=WORKING)

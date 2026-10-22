@@ -8,6 +8,7 @@ from typing import ClassVar, List, Optional
 import pytest
 from pydantic import Field
 
+from xeda.flow import MetricSpec
 from xeda import Design
 from xeda.flow import Flow, registered_flows
 from xeda.digest import package_files
@@ -31,7 +32,7 @@ def hooked():
     class HookedToy(Flow):
         """A flow with a hook script setting and an output-path setting."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Settings(Flow.Settings):
             hook: Optional[Path] = Field(None, description="A script the tool reads.")

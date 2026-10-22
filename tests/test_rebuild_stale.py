@@ -16,6 +16,7 @@ from typing import ClassVar
 import pytest
 from pydantic import Field
 
+from xeda.flow import MetricSpec
 from xeda import Design
 from xeda.console import console
 from xeda.design import SourceType
@@ -47,7 +48,7 @@ def toys():
     class ToyProducer(Flow):
         """Copies the first design source, plus `suffix`, to outputs/produced.txt."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Settings(Flow.Settings):
             suffix: str = Field("", description="Appended to the copied text.")
@@ -66,7 +67,7 @@ def toys():
     class ToyConsumer(Flow):
         """Copies its producer's output to outputs/consumed.txt."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
         #: it reads no source of the design: its producer's sources are none of its business
         design_source_types = frozenset()
 
@@ -205,7 +206,7 @@ def exact():
     class ToyChunks(Flow):
         """Copies the design's first two sources to two outputs."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Outputs(Flow.Outputs):
             first: Path = Out(SourceType.Data, description="The first source.")
@@ -222,7 +223,7 @@ def exact():
     class ToyX(Flow):
         """Lower-cases the first file."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
         design_source_types = frozenset()
 
         class Inputs(Flow.Inputs):
@@ -243,7 +244,7 @@ def exact():
     class ToyY(Flow):
         """Reads the second file."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
         design_source_types = frozenset()
 
         class Inputs(Flow.Inputs):
@@ -257,7 +258,7 @@ def exact():
     class ToyZ(Flow):
         """Reads x's copy."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
         design_source_types = frozenset()
 
         class Inputs(Flow.Inputs):
@@ -345,7 +346,7 @@ def _depfile_consumer():
     class ToyDepfileConsumer(Flow):
         """Copies its producer's output, and names it in a depfile as a tool does."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
         design_source_types = frozenset()
 
         class Inputs(Flow.Inputs):
@@ -434,7 +435,7 @@ def test_post_cleanup_waits_for_the_requested_flow(tmp_path, design):
     class ToyScratcher(Flow):
         """Writes an output it does not declare, besides the one it does."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Outputs(Flow.Outputs):
             declared: Path = Out(SourceType.Data, description="The declared file.")
@@ -448,7 +449,7 @@ def test_post_cleanup_waits_for_the_requested_flow(tmp_path, design):
     class ToyScratchReader(Flow):
         """Reads its producer's undeclared output."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Inputs(Flow.Inputs):
             declared: Path = In(
@@ -495,7 +496,7 @@ def test_a_failed_launch_still_cleans_up_what_ran(tmp_path, toys, design):
     class ToyFailingUser(Flow):
         """Reads the producer's output, then fails."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Inputs(Flow.Inputs):
             produced: Path = In(
@@ -531,7 +532,7 @@ def test_a_file_a_depfile_named_is_an_input(tmp_path, design):
     class ToyIncluder(Flow):
         """Reports, in a depfile, that it read a file the design does not list."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         def run(self) -> None:
             RUNS.append(self.name)
@@ -558,7 +559,7 @@ def test_a_flow_reporting_its_whole_run_directory_can_be_fresh(tmp_path, design)
     class ToyWhole(Flow):
         """Reports its whole run directory."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         def run(self) -> None:
             RUNS.append(self.name)
@@ -582,7 +583,7 @@ def test_an_action_runs_every_time_after_fresh_dependencies(tmp_path, toys, desi
     class ToyAction(Flow):
         """Pretends to program a board with its producer's output."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Inputs(Flow.Inputs):
             produced: Path = In(
@@ -658,7 +659,7 @@ def test_launched_lists_a_flow_that_raised_and_its_depender(tmp_path, design):
     class ToyFatal(Flow):
         """Its run raises."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Outputs(Flow.Outputs):
             out: Path = Out(SourceType.Data, description="Never made.")
@@ -669,7 +670,7 @@ def test_launched_lists_a_flow_that_raised_and_its_depender(tmp_path, design):
     class ToyFatalUser(Flow):
         """Reads the output of a flow whose run raises."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Inputs(Flow.Inputs):
             out: Path = In(
@@ -708,7 +709,7 @@ def test_a_producer_two_inputs_read_runs_once(tmp_path, toys, design, launcher):
     class ToyTwoInputs(Flow):
         """Reads the producer's output through two inputs."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Inputs(Flow.Inputs):
             first: Path = In(
@@ -780,7 +781,7 @@ def test_a_failed_clean_up_does_not_stop_the_others(tmp_path, toys, design, monk
     class ToyFailingConsumer(Flow):
         """Reads the producer's output, then fails."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         class Inputs(Flow.Inputs):
             produced: Path = In(
@@ -923,7 +924,7 @@ def test_pruning_removes_the_trace_before_anything_else(tmp_path, design, monkey
     class ToyScratchFiles(Flow):
         """Leaves undeclared files behind, named on both sides of `trace.json`."""
 
-        results_description: ClassVar[dict[str, str]] = {}
+        results_description: ClassVar[dict[str, MetricSpec]] = {}
 
         def run(self) -> None:
             for name in ("0.txt", "a.txt", "u.txt", "z.txt"):
