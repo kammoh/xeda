@@ -126,6 +126,7 @@ def test_a_leaf_entry_describes_the_leaf(listing_flow):
         "name": "outer.mode",
         "alias": None,
         "type": "string",
+        "unit": None,
         "required": False,
         "default": "a",
         "description": "Which mode to use.",
