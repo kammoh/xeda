@@ -119,6 +119,7 @@ from .launch_entry import (
     REQUEST_FILE,
     RESULT_FILE,
     LaunchRequest,
+    write_stderr,
 )
 from .manifest import Entry, apply_sync, build_manifest, plan_sync, safe_member_path, write_tar
 
@@ -811,7 +812,7 @@ class Session:
             return 0
         except Exception as error:  # pylint: disable=broad-except
             self.tell({"error": {"type": type(error).__name__, "message": str(error)}})
-            print(f"xeda agent: {type(error).__name__}: {error}", file=sys.stderr)
+            write_stderr(f"xeda agent: {type(error).__name__}: {error}")
             return 1
         finally:
             self.close()
@@ -1761,7 +1762,7 @@ def _error_document(error: BaseException) -> dict[str, Any]:
 def _refuse(arguments: argparse.Namespace, protocol: BinaryIO, error: BaseException) -> int:
     """Report that the agent cannot hold the locks of its environment and code copy, in the form
     of the command, and return the exit status."""
-    print(f"xeda agent: {type(error).__name__}: {error}", file=sys.stderr)
+    write_stderr(f"xeda agent: {type(error).__name__}: {error}")
     document: dict[str, Any] = {"error": _error_document(error)}
     if arguments.command == "session":
         FrameWriter(cast(BinaryIO, _FdWriter(protocol.fileno()))).send_json(document)
@@ -1788,7 +1789,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         key = "removable" if arguments.list_only else "removed"
         if not os.path.isabs(arguments.root):
             error = RemoteProtocolError("the root must be an absolute path")
-            print(f"xeda agent: {error}", file=sys.stderr)
+            write_stderr(f"xeda agent: {error}")
             document, status = {key: [], "kept": [], "error": _error_document(error)}, 2
         else:
             try:
@@ -1800,7 +1801,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     arguments.only,
                 )
             except Exception as error:  # pylint: disable=broad-except
-                print(f"xeda agent: {type(error).__name__}: {error}", file=sys.stderr)
+                write_stderr(f"xeda agent: {type(error).__name__}: {error}")
                 document, status = {key: [], "kept": [], "error": _error_document(error)}, 1
     else:
         return _serve(arguments, protocol, use_locks)
@@ -1814,7 +1815,7 @@ def _serve(arguments: argparse.Namespace, protocol: BinaryIO, use_locks: Sequenc
     if not os.path.isabs(arguments.root):
         error = RemoteProtocolError(f"the root {arguments.root!r} is not an absolute path")
         writer.send_json({"error": _error_document(error)})
-        print(f"xeda agent: {error}", file=sys.stderr)
+        write_stderr(f"xeda agent: {error}")
         return 2
     # An unbuffered file: the reader thread may be blocked in a read when the process exits, and a
     # buffered reader that a thread holds makes the interpreter abort at shutdown.
@@ -1833,7 +1834,7 @@ def _serve(arguments: argparse.Namespace, protocol: BinaryIO, use_locks: Sequenc
         )
     except RemoteProtocolError as error:
         writer.send_json({"error": _error_document(error)})
-        print(f"xeda agent: {error}", file=sys.stderr)
+        write_stderr(f"xeda agent: {error}")
         return 1
 
     def on_signal(number: int, _frame: Any) -> None:
