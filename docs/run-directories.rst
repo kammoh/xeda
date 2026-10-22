@@ -182,11 +182,15 @@ cause. Xeda removes the previous ``results.json`` before a run starts, so an ear
 stands for a run that failed.
 
 A run that fails after it has started still writes the file, as a failure document. This covers a
-failing tool and a failing producer. The ``outcome`` is ``failed``, and ``error.code`` and
-``error.message`` say what failed. The ``code`` is a stable text, never a class name. A flow whose
-reports or checks failed without a tool error says ``reported_failure``. A consumer of a failed
-producer says ``producer_failed`` and quotes the cause. A run that its checks rejected has the
-outcome ``rejected``. Only a ``passed`` and a ``rejected`` run are reused.
+failing tool. The ``outcome`` is ``failed``, and ``error.code`` and ``error.message`` say what
+failed. The ``code`` is a stable text, never a class name. A flow whose reports or checks failed
+without a tool error says ``reported_failure``. A run that its checks rejected has the outcome
+``rejected``. Only a ``passed`` and a ``rejected`` run are reused.
+
+A consumer of a producer that did not pass does not run. It is blocked, and it writes nothing: its
+run directory keeps its last ``results.json`` and trace. ``--clean`` empties the run directory of
+a flow only when the flow is about to run, so it does not remove them either. The error of the
+launch quotes the producer, its code and its message.
 
 A file that an older Xeda wrote has no ``schema_version``. Xeda treats such a directory as a run
 that never finished, and runs the flow again.
