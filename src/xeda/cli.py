@@ -40,6 +40,8 @@ if TYPE_CHECKING or not os.environ.get("_XEDA_COMPLETE"):
         info_table,
         machine_readable_mode,
         print_flow_settings,
+        print_results,
+        print_run_tables,
         resolve_format,
         select_design_in_project,
     )
@@ -54,9 +56,12 @@ if TYPE_CHECKING or not os.environ.get("_XEDA_COMPLETE"):
     )
     from .flow_runner.chains import parse_request
     from .flow_runner.dse import Dse
+    from .flow_runner.dse.dse_runner import RESULTS_SHOWN
     from .flow_runner.error_codes import public_error, request_error_info
+    from .flow_runner.launch_report import results_of
     from .flow_runner.launch_result import failed_result, launch_result
     from .flow_runner.resolver import Plan
+    from .log_context import launch_id_of
     from .flow_runner.settings_layers import command_line_table
     from .introspect import (
         boards_info,
@@ -973,6 +978,12 @@ def run(
                     log.critical("%s", error["message"])
                 log.critical("Remote dry run of flow '%s' on '%s' failed.", flow, remote)
             sys.exit(outcome.exit_status)
+        if outcome.record is not None and not json_flag:
+            print_results(
+                results_of(outcome.record),
+                title=f"Results of flow:{flow} design:{document['spec']['design']}",
+                skip_if_false={"artifacts", "reports"},
+            )
         if not outcome.success:
             log.critical("Remote run of flow '%s' on '%s' failed.", flow, remote)
         if json_flag:
@@ -983,7 +994,10 @@ def run(
     table = command_line_table(flow, flow_settings)
 
     def not_started(
-        error: Exception, spec: Optional[Spec] = None, plan: Optional[Plan] = None
+        error: Exception,
+        spec: Optional[Spec] = None,
+        plan: Optional[Plan] = None,
+        launch_id: Optional[str] = None,
     ) -> NoReturn:
         """Report an exception that ended the command before the launch gave an outcome.
 
@@ -998,7 +1012,7 @@ def run(
         if json_flag:
             if spec is not None and not refused:
                 assert launcher is not None
-                document = failed_result(launcher, spec, plan, info).to_dict()
+                document = failed_result(launcher, spec, plan, info, launch_id=launch_id).to_dict()
             else:
                 if spec is None:
                     spec_fields = spec_document(
@@ -1094,7 +1108,11 @@ def run(
     try:
         result = launch_result(launcher, spec, lambda: launcher.run_resolved(resolved, plan))
     except Exception as e:
-        not_started(e, spec, plan)
+        not_started(e, spec, plan, launch_id_of(e))
+    if json_flag:
+        pass
+    elif launcher.settings.display_results:
+        print_run_tables(result, resolved.design.name)
     if not result.passed and result.error is not None:
         log.critical("%s", result.error.message)
     if json_flag:
@@ -1402,6 +1420,8 @@ def dse(
     except BaseException as e:
         dse_failure(type(e).__name__, _error_message(e), e)
         raise  # unreachable: dse_failure exits
+    if best is not None and not json_flag:
+        print_results(best.results, title="Best results", subset=RESULTS_SHOWN)
     if json_flag:
         document = {
             "flow": flow,
