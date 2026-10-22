@@ -95,7 +95,8 @@ and only for a passed or rejected run (`tests/test_rejected_verdicts.py`).
 - A failure after a run starts leaves `results.json` with `outcome: failed`, `error.code` and
   `error.message` (`tests/test_failure_results.py`). The code is stable and never a class name
   (`flow_runner/error_codes.py`, `tests/test_public_errors.py`); `reported_failure` is a node's
-  cause, `FlowFailed` the verdict of `xeda run --json`. Only a rejection (`Flow.reject` in
+  cause, and the `outcome` and `error` of the `Result` are the verdict of `xeda run --json`
+  (`tests/test_outcomes.py`). Only a rejection (`Flow.reject` in
   `check_results()`; `parse_reports()` only reads, `tests/test_verdict_placement.py`) keeps
   the trace and is reported again unchanged; every other failed execution keeps none. A blocked
   node (a producer did not pass) does not execute and writes nothing in its run directory, so
@@ -103,7 +104,9 @@ and only for a passed or rejected run (`tests/test_rejected_verdicts.py`).
 - A launch ends in a `Result` (`outcomes.py`): an outcome and a disposition for every planned node,
   and the aggregate verdict with its cause. Only `flow_runner/launch_result.py` builds it, from the
   collector that `_launch` reports to; a node's failure is a value in it, never an exception, and
-  `KeyboardInterrupt` propagates.
+  `KeyboardInterrupt` propagates. `Result.to_dict()` is the document of `xeda run --json`; the
+  remote client reads it back with `result_from_dict` (`tests/test_outcomes.py`,
+  `tests/test_remote_client.py`).
 - `Flow.always_runs()` returns a reason or `None`; every override calls `super()`. A simulation
   passes only on evidence that it ended (`judge_evidence`, `tests/test_sim_evidence.py`).
 
@@ -236,7 +239,10 @@ and only for a passed or rejected run (`tests/test_rejected_verdicts.py`).
   `tests/fake_tools/remote/`, on a `PATH` only through the remote fixtures.
 - `--json` puts exactly one JSON document on stdout; tool output goes to stderr, so a process
   started outside `run_process` must honor `proc_utils.tool_output_redirect()`. Every failure,
-  usage errors too, emits `{"success": false, "error": ...}` (`tests/test_cli_json_contract.py`).
+  usage errors too, emits an `error`. `xeda run` prints `Result.to_dict()` (`outcome`, `error`,
+  `nodes`); a request that starts no launch has `outcome: null` and exits 2, and a usage error
+  also has `spec: null`. The other commands print `{"success": false, "error": ...}`
+  (`tests/test_cli_json_contract.py`).
 - CLI: two parameters never share a destination; commands use `XedaCommand`
   (`tests/test_hidden_options.py`); options read only declared environment variables; a behavior
   switch is a flag (`tests/test_option_names.py`). Compare help text via `click.unstyle(...)`.

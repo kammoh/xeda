@@ -2,40 +2,36 @@
 
 `select_fetch` runs on the remote. It names the files of the run directories that come back.
 `publish_mirror` runs on the local machine. It checks each received file against its digest and
-writes it into the mirror. `rewrite_results` points the paths in the results of a node that the
-request names at the mirror. `rewrite_records` writes the records of a mirror directory again with
-the paths of this side.
+writes it into the mirror. `rewrite_records` writes the records of a mirror directory again with
+the paths of this side. `deliver_fetched` delivers the outputs of the requested node.
 
 A mirror directory holds the files of one run directory under the names they have there. The
 record of a run (`results.json`) names its files relative to the run directory, so a fetched record
 needs no rewriting. A file outside the run directory is in no record and does not come back.
 """
 
-import copy
-import hashlib
 import json
 import logging
 import os
 import stat
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, Dict, Optional
+from typing import Any, BinaryIO, Optional
 
-from ..artifacts import (
-    ArtifactPath,
-    drop_unwritten_artifacts,
-    filter_artifact_paths,
-    map_artifact_paths,
+from ..deliver import (
+    Delivered,
+    Deliveries,
+    DeliveryError,
+    ReadInputs,
+    artifacts_of,
+    outputs_to_deliveries,
 )
-from ..deliver import Deliveries, DeliveryError, ReadInputs, outputs_to_deliveries
 from ..design import Design
 from ..digest import content_digest
 from ..errors import RecordError
 from ..flow import Flow, FlowSettingsError
-from ..flow.derived import recorded_files
 from ..flow_runner.default_runner import _get_flow_class_if_known
-from ..flow_runner.outputs import declared_output_files
 from ..flow_runner.trace_inputs import design_files, register_read_settings
 from ..records import RunRecord, decode_record, stored_outputs
 from ..run_dir import RunDirectory, RunDirectoryError, link_refusal
@@ -49,45 +45,6 @@ log = logging.getLogger(__name__)
 _RECORDS = ("results.json", "settings.json")
 #: The record of freshness: it stays on the remote.
 _TRACE = "trace.json"
-_EXTERNAL = "_external"
-
-
-def external_place(remote_path: str) -> PurePosixPath:
-    """Return where a file outside the run directory lies in the mirror directory. The digest
-    keeps same-named files of different places apart."""
-    digest = hashlib.sha256(remote_path.encode()).hexdigest()[:16]
-    return PurePosixPath(_EXTERNAL) / digest / PurePosixPath(remote_path).name
-
-
-def mirror_relative(remote_path: str, remote_run_dir: str) -> PurePosixPath:
-    """Return the place in the mirror directory of the file `remote_path`, which a result names
-    as an absolute path or relative to the run directory `remote_run_dir`.
-
-    A file below the run directory keeps its place. Any other file (an absolute path elsewhere,
-    or a relative `../` path) has an external place, so that nothing leaves the mirror."""
-    remote_root = os.path.normpath(remote_run_dir)
-    full = os.path.normpath(
-        remote_path if os.path.isabs(remote_path) else os.path.join(remote_root, remote_path)
-    )
-    relative = PurePosixPath(os.path.relpath(full, remote_root))
-    if ".." in relative.parts:
-        return external_place(full)
-    return relative
-
-
-def keep_vouched(
-    artifacts: Any, vouched: Collection[str] | None, flow_name: str = "the remote flow"
-) -> Any:
-    """Return the artifacts of a failed run without the paths that the remote did not vouch for.
-
-    `vouched` are the names, as each is named in the results, of the artifacts that the remote
-    says its run wrote. A remote can tell, from its own file system, but this side cannot: a
-    file that merely exists on the remote proves nothing, and with no word from the remote none
-    is kept."""
-    kept = frozenset(vouched or ())
-    return drop_unwritten_artifacts(
-        artifacts, lambda artifact: os.fspath(artifact) in kept, flow_name
-    )
 
 
 @dataclass(frozen=True)
@@ -104,15 +61,6 @@ class NodeResult:
     results: dict[str, Any]
     named: bool
     written: Optional[frozenset[str]] = None
-
-
-def _declared_outputs_problem(results: Mapping[str, Any], run_dir: str) -> None:
-    """Raise `DeliveryError` if a declared output is not an absolute path inside `run_dir`."""
-    root = PurePosixPath(run_dir)
-    for path in declared_output_files(dict(results)):
-        output = PurePosixPath(path.as_posix())
-        if not output.is_absolute() or ".." in output.parts or not output.is_relative_to(root):
-            raise DeliveryError("A declared remote output is outside its run directory")
 
 
 def _is_regular(path: str) -> bool:
@@ -301,68 +249,18 @@ def publish_mirror(
     return published
 
 
-def rewrite_results(
-    results: dict[str, Any],
-    remote_run_dir: PurePosixPath,
-    mirror_dir: Path,
-    *,
-    written: Optional[Collection[str]] = None,
-) -> dict[str, Any]:
-    """Return the results of a node that the request names, with the paths of the remote run
-    directory `remote_run_dir` pointed at the mirror directory `mirror_dir`: `run_path` and
-    every artifact and declared output. Call it for a node that `select_fetch` took the named
-    files of.
-
-    Every path it returns is a regular file in the mirror, or it raises. A failed run has no
-    declared outputs, and of its artifacts only those survive that its run wrote: `written` are
-    the paths relative to its run directory that the remote vouched for (as `NodeResult.written`
-    does), and with none given no artifact survives. A declared output must lie in the run
-    directory, and its file in the mirror must have the digest in its record, or
-    `DeliveryError`."""
-    rewritten = copy.deepcopy(results)
-    remote_dir = str(remote_run_dir)
-    succeeded = bool(rewritten.get("success"))
-    if not succeeded:
-        rewritten.pop("outputs", None)
-    _declared_outputs_problem(rewritten, remote_dir)
-
-    def local_path(path: str) -> Path:
-        return mirror_dir / mirror_relative(path, remote_dir)
-
-    for recorded in (rewritten.get("outputs") or {}).values():
-        for record, key in recorded_files(recorded):
-            local = local_path(record[key])
-            if not _is_regular(str(local)):
-                raise DeliveryError(f"Declared remote output {record[key]} is not in the mirror")
-            if content_digest(local) != record["sha"]:
-                raise DeliveryError(f"Declared remote output {record[key]} changed during transfer")
-            record[key] = str(local)
-    artifacts = rewritten.get("artifacts")
-    if artifacts is not None:
-        # A file outside the run directory is in no record and does not come back.
-        artifacts = filter_artifact_paths(
-            artifacts,
-            lambda artifact: mirror_relative(os.fspath(artifact), remote_dir).parts[0] != _EXTERNAL,
-        )
-        vouched = frozenset(written or ())
-
-        def kept(artifact: ArtifactPath) -> bool:
-            place = mirror_relative(os.fspath(artifact), remote_dir)
-            return place.as_posix() in vouched and _is_regular(str(mirror_dir / place))
-
-        if not succeeded and isinstance(artifacts, Mapping):
-            artifacts = drop_unwritten_artifacts(artifacts, kept, str(rewritten.get("flow")))
-
-        def rewrite(artifact: ArtifactPath) -> str:
-            local = local_path(os.fspath(artifact))
-            if not _is_regular(str(local)):
-                raise RemoteFetchError(f"the artifact {os.fspath(artifact)} is not in the mirror")
-            return str(local)
-
-        rewritten["artifacts"] = map_artifact_paths(artifacts, rewrite)
-    if "run_path" in rewritten:
-        rewritten["run_path"] = str(mirror_dir)
-    return rewritten
+def check_fetched_outputs(record: RunRecord) -> None:
+    """Raise `DeliveryError` if a declared output of `record`, the record of a run that passed and
+    that now lies in the mirror, is not a regular file there or does not have the digest that the
+    record holds. A run that did not pass has no declared output to check."""
+    if not record.passed:
+        return
+    for files in stored_outputs(record).values():
+        for path, digest in files:
+            if not _is_regular(str(path)):
+                raise DeliveryError(f"Declared remote output {path.name} is not in the mirror")
+            if content_digest(path) != digest:
+                raise DeliveryError(f"Declared remote output {path.name} changed during transfer")
 
 
 def translate_paths(document: Any, translate: Callable[[str], Optional[str]]) -> Any:
@@ -379,7 +277,7 @@ def translate_paths(document: Any, translate: Callable[[str], Optional[str]]) ->
     return document
 
 
-def _only_fetched_artifacts(document: Any, mirror_dir: Path) -> Any:
+def only_fetched_artifacts(document: Any, mirror_dir: Path) -> Any:
     """Return the record `document` of a run that did not pass, with the artifacts that came back.
 
     The record of a run lists the files it wrote. A remote that lists a file it never wrote
@@ -422,7 +320,7 @@ def rewrite_records(
         except (OSError, ValueError) as error:
             raise RemoteFetchError(f"cannot read the fetched {record}: {error}") from None
         if name == "results.json":
-            document = _only_fetched_artifacts(document, mirror_dir)
+            document = only_fetched_artifacts(document, mirror_dir)
         try:
             target = run_directory.writable(name)
         except RunDirectoryError as error:
@@ -469,33 +367,22 @@ def remote_read_inputs(
 
 def deliver_fetched(
     delivery: Deliveries,
-    results: Dict[str, Any],
-    remote_artifacts: Any,
-    remote_run_path: Optional[str],
-    local_artifacts_dir: Path,
+    record: RunRecord,
     *,
     outputs_to: Optional[Path],
-) -> None:
-    """Deliver `--outputs-to` (`outputs_to`) from the artifacts fetched into
-    `local_artifacts_dir`.
+) -> list[Delivered]:
+    """Deliver `--outputs-to` (`outputs_to`) from the files of the mirror directory of `record`
+    (`record.run_dir`) and return what was delivered.
 
-    The artifacts are named by their paths in the remote run directory. Only a run that
-    succeeded delivers: the files of a failed run never replace earlier copies made by
-    Xeda. What was delivered goes into `results`."""
-    if outputs_to is None or not remote_run_path or not remote_artifacts:
-        return
-    if not results.get("success"):
-        log.warning("The remote run failed: nothing is delivered to %s", outputs_to)
-        return
-    extra = outputs_to_deliveries(remote_artifacts, Path(remote_run_path), outputs_to)
-    delivery.collect(local_artifacts_dir, extra)
-    try:
-        delivered = delivery.deliver()
-    except Exception:
-        # As `_finish_launch` does for a local run: `deliver()` records, and reports through
-        # `delivery.delivered`, whatever it copied before raising (an `OSError` partway
-        # through). So `results["deliveries"]`, which a `--json` reader sees, still lists
-        # the copies that actually reached disk before the error propagates.
-        results["deliveries"] = [d.as_json_value() for d in delivery.delivered]
-        raise
-    results["deliveries"] = [d.as_json_value() for d in delivered]
+    Only a run that passed delivers: the files of a failed run never replace earlier copies made
+    by Xeda. If the delivery raises, `delivery.delivered` holds what it copied before."""
+    if outputs_to is None:
+        return []
+    if not record.passed:
+        log.warning("The remote run did not pass: nothing is delivered to %s", outputs_to)
+        return []
+    named = artifacts_of(record)
+    if not named:
+        return []
+    delivery.collect(record.run_dir, outputs_to_deliveries(named, record.run_dir, outputs_to))
+    return list(delivery.deliver())
