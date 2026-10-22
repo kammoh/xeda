@@ -96,8 +96,7 @@ class IseSynth(FpgaSynthFlow):
 
     results_description = describe_results(
         "minimum_period",
-        "maximum_frequency",
-        "Fmax",
+        "fmax",
         "wns",
         "lut",
         "ff",
@@ -248,7 +247,7 @@ class IseSynth(FpgaSynthFlow):
         )
         fail |= not self.parse_report_regex(
             outputs["synthesis_report"],
-            r"Minimum period:\s+(?P<minimum_period>\-?\d+(?:\.\d+)?)ns\s+\(Maximum Frequency: (?P<maximum_frequency>\-?\d+(?:\.\d+)?)MHz\)",
+            r"Minimum period:\s+(?P<minimum_period>\-?\d+(?:\.\d+)?)ns\s+\(Maximum Frequency: (?P<fmax>\-?\d+(?:\.\d+)?)MHz\)",
             r"Slack:\s+(?P<wns>\-?\d+(?:\.\d+)?)ns",
         )
         if "wns" in self.results:
