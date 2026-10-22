@@ -1361,12 +1361,14 @@ class Session:
             for node in document["nodes"]:
                 name = node["name"]
                 run_dir = Path(node["run_dir"])
-                results = _read_json(run_dir / "results.json")
+                # The record of this launch, not the file: a node that did not run keeps the
+                # file of an earlier run in its directory.
+                record = node.get("record")
                 nodes.append(
                     NodeResult(
                         name,
                         run_dir,
-                        results if isinstance(results, dict) else {},
+                        record if isinstance(record, dict) else {},
                         name in named,
                         frozenset(written[name]) if name in written else None,
                     )
