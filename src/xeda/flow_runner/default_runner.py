@@ -104,6 +104,7 @@ from .launch_report import (
     reuse_results,
     warn_outputs_to_delivered_nothing,
 )
+from .launch_result import LaunchCollector
 from .launch_run import refuse_inputs_inside
 from .outputs import declared_output_files
 from .resolver import (
@@ -575,6 +576,8 @@ class FlowLauncher:
         self._plans: dict[int, tuple[Plan, Any, Any]] = {}
         self._planned_completed: dict[tuple[int, NodeKey], Flow] = {}
         self.last_plan: Plan | None = None
+        #: What the current launch reports as it goes on (`launch_result.launch_result` reads it).
+        self.collector = LaunchCollector()
         self._completed_runs: dict[Path, tuple[Flow, CompletedRun]] = {}
 
     @property
@@ -911,6 +914,7 @@ class FlowLauncher:
             self._read_inputs = ReadInputs(self._launch_inputs)
             self._delivered_files = DeliveredFiles()
             self._pending_deliveries = []
+            self.collector = LaunchCollector()
         self._launch_depth += 1
         try:
             flow = self._launch(
@@ -939,6 +943,7 @@ class FlowLauncher:
             # producers noted.
             error = self._finish_launch(deliver=flow.succeeded)
             if error is not None:
+                self.collector.finish_raised = error
                 raise error
             if (
                 self.settings.outputs_to is not None
@@ -968,6 +973,7 @@ class FlowLauncher:
             if policy.purges
         }
         first_error: Optional[Exception] = None
+        noted = [(flow, list(delivery.pending)) for flow, delivery in deliveries]
         # A file moves only if exactly one delivery of the whole launch reaches it, so the files
         # are counted before the first delivery is made: one flow's move must not leave another
         # flow's artifact, a link to that file, nothing to read.
@@ -984,7 +990,10 @@ class FlowLauncher:
                 # sees the copies that actually reached disk.
                 flow.deliveries = delivery.delivered
                 log.error("Delivering the outputs of %s failed: %s", flow.name, e)
+                self.collector.finish_failed("delivery", e)
                 first_error = first_error or e
+        for (flow, delivery), (_, pending_files) in zip(deliveries, noted):
+            self.collector.deliveries_noted(flow, pending_files, delivery.delivered)
         pending, self._pending_clean_ups = self._pending_clean_ups, []
         for flow, settings_json, results_json, policy in pending:
             try:
@@ -992,6 +1001,7 @@ class FlowLauncher:
                     self._clean_up(flow, settings_json, results_json, policy)
             except Exception as e:  # noqa: BLE001 - every clean-up gets its turn
                 log.error("Cleaning up %s failed: %s", flow.run_path, e, exc_info=True)
+                self.collector.finish_failed("clean-up", e)
                 first_error = first_error or e
         return first_error
 
@@ -1164,6 +1174,8 @@ class FlowLauncher:
         node = self._validate_plan(
             plan, flow_class, design, flow_settings, all_flows_settings, plan_node
         )
+        if plan_node is None:
+            self.collector.planned(plan)
         producer_launch = depender is not None or consumer is not None
         if not producer_launch and self.settings.outputs_to is not None:
             # Before the run root, a lock or a producer.
@@ -1230,13 +1242,6 @@ class FlowLauncher:
                     recorded_artifacts(run_path, self.run_root), run_path, outputs_to
                 )
             )
-            if policy.clean:
-                if self.settings.backups:
-                    backup_existing(run_path)
-                    run_path.mkdir(parents=True, exist_ok=True)
-                else:
-                    run_directory.clear()
-
             # The design stage. A flow that reads a design a converter derives gets its producer
             # launched here, before the flow exists: the derived design decides what the flow is
             # built with and how its design is hashed. A failure is the failure of this flow
@@ -1288,6 +1293,7 @@ class FlowLauncher:
                     run_directory=run_directory,
                 )
             untouched = False
+            failure: BaseException | None = None
             try:
                 flow.design_hash = design_hash
                 flow.flow_hash = flowrun_hash
@@ -1321,6 +1327,14 @@ class FlowLauncher:
                     flow.producer_run_ids = {
                         str(producer.run_path): str(producer.run_id) for producer in producers
                     }
+                    if policy.clean:
+                        # Only now: a flow that a failed producer blocks does not run, so it
+                        # keeps what its run directory holds, its record included.
+                        if self.settings.backups:
+                            backup_existing(run_path)
+                            run_path.mkdir(parents=True, exist_ok=True)
+                        else:
+                            run_directory.clear()
                     # Producers have their own program records. Preparation belongs to this
                     # consumer and happens before its execution recording scope/snapshot.
                     with recording_programs() as programs:
@@ -1344,15 +1358,21 @@ class FlowLauncher:
                         # flow did not run, and the launch does not list it as launched.
                         untouched = True
                         raise
-                    # A producer failed, was rejected or raised, so this flow did not run. Its
-                    # directory no longer vouches for a run.
+                    if isinstance(e, FlowDependencyFailure) and e.producer:
+                        # A producer did not pass, so this flow is blocked: it does not run and
+                        # writes nothing. Its run directory keeps its last record and trace.
+                        launch_run.record_identity(flow, run_path)
+                        flow.results.success = False
+                        flow.results["error"] = error_info(e, node=flow.name).as_json_value()
+                        flow.blocked_by = e.producer
+                        raise
+                    # The flow could not start: a problem with what its producers hand over, or
+                    # with the flow itself. Its directory no longer vouches for a run.
                     remove_trace(run_path)
                     run_directory.remove(results_json)
                     launch_run.record_identity(flow, run_path)
                     flow.results.success = False
                     flow.results["error"] = error_info(e, node=flow.name).as_json_value()
-                    if isinstance(e, FlowDependencyFailure) and e.producer:
-                        flow.blocked_by = e.producer
                     report(
                         flow,
                         derived,
@@ -1546,6 +1566,9 @@ class FlowLauncher:
                     self._defer_delivery(flow, delivery, outputs_to)
                 if policy.post_cleanup:
                     self._pending_clean_ups.append((flow, settings_json, results_json, policy))
+            except BaseException as raised:
+                failure = raised
+                raise
             finally:
                 if flow.succeeded and producer_launch:
                     # Only producers need a hand-over token. A requested run may succeed with
@@ -1564,6 +1587,7 @@ class FlowLauncher:
                     self._completed_runs[run_path.resolve()] = (flow, token)
                 if not untouched:
                     self.launched.append(flow)
+                    self.collector.node_ended(node, flow, failure)
         return flow
 
     def _defer_delivery(self, flow: Flow, delivery: Deliveries, outputs_to: Optional[Path]) -> None:
