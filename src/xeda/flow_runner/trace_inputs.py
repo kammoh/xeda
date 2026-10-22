@@ -31,7 +31,6 @@ import os
 import re
 import stat
 import time
-import uuid
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from functools import lru_cache
@@ -971,8 +970,10 @@ def build_trace(
     snapshot: InputSnapshot,
     input_settings: Flow.Settings,
     previous: Optional[Trace] = None,
+    *,
+    run_id: str,
 ) -> Trace:
-    """Return the trace of the run that `flow` just completed, under a new `run_id`.
+    """Return the trace of the run that `flow` just completed, under its `run_id`.
 
     The run passed, or its checks rejected it (`Flow.outcome`); the trace records which, and for
     a rejection the error of the results (`Trace.verdict`, `Trace.error`).
@@ -1080,7 +1081,7 @@ def build_trace(
     rejected = flow.outcome == "rejected"
     return Trace(
         flow=expected.flow,
-        run_id=uuid.uuid4().hex,
+        run_id=run_id,
         flowrun_hash=expected.flowrun_hash,
         settings_hash=expected.settings_hash,
         design_hash=expected.design_hash,
