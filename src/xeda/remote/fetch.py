@@ -2,12 +2,13 @@
 
 `select_fetch` runs on the remote. It names the files of the run directories that come back.
 `publish_mirror` runs on the local machine. It checks each received file against its digest and
-writes it into the mirror. `rewrite_results` points the paths in a node's results at the mirror. `rewrite_records` writes the
-records of a mirror directory again with the paths of this side.
+writes it into the mirror. `rewrite_results` points the paths in the results of a node that the
+request names at the mirror. `rewrite_records` writes the records of a mirror directory again with
+the paths of this side.
 
-A mirror directory holds the files of one run directory under the names they have there. A file
-that is not in the run directory (an artifact outside it) lies in the mirror directory under
-`_external/<digest>/<name>`, where the digest names its remote path.
+A mirror directory holds the files of one run directory under the names they have there. The
+record of a run (`results.json`) names its files relative to the run directory, so a fetched record
+needs no rewriting. A file outside the run directory is in no record and does not come back.
 """
 
 import copy
@@ -24,17 +25,19 @@ from typing import Any, BinaryIO, Dict, Optional
 from ..artifacts import (
     ArtifactPath,
     drop_unwritten_artifacts,
-    iter_artifact_paths,
+    filter_artifact_paths,
     map_artifact_paths,
 )
 from ..deliver import Deliveries, DeliveryError, ReadInputs, outputs_to_deliveries
 from ..design import Design
 from ..digest import content_digest
+from ..errors import RecordError
 from ..flow import Flow, FlowSettingsError
 from ..flow.derived import recorded_files
 from ..flow_runner.default_runner import _get_flow_class_if_known
 from ..flow_runner.outputs import declared_output_files
 from ..flow_runner.trace_inputs import design_files, register_read_settings
+from ..records import RunRecord, decode_record, stored_outputs
 from ..run_dir import RunDirectory, RunDirectoryError, link_refusal
 from ..utils import dump_json, replacing_file
 from .errors import RemoteFetchError
@@ -177,6 +180,15 @@ def _node_prefix(run_root: Path, run_dir: Path) -> PurePosixPath:
     raise RemoteFetchError(f"the run directory {run_dir} is not below the run root {run_root}")
 
 
+def _fetched_record(node: "NodeResult", run_root: Path) -> RunRecord | None:
+    """Return the record that the results of `node` hold, or None if they hold none (a node that
+    never ran, or a record that this Xeda cannot read)."""
+    try:
+        return decode_record(node.results, run_dir=Path(node.run_dir), run_root=run_root)
+    except RecordError:
+        return None
+
+
 def select_fetch(
     run_root: Path, nodes: Sequence[NodeResult], *, fetch_all: bool
 ) -> dict[str, Path]:
@@ -187,21 +199,20 @@ def select_fetch(
 
     Of every node, these come back: `results.json`, `settings.json`, the `*.log` files at the top
     of the run directory, and everything below `reports/`. Of a node that the request names, the
-    paths in `results.outputs` and `results.artifacts` come back too. With `fetch_all`, the whole
-    run directory comes back. `trace.json` never does.
+    files that its record lists (its outputs and artifacts) come back too. With `fetch_all`, the
+    whole run directory comes back. `trace.json` never does.
 
-    A node that failed (`results.success` is not true) returns only the files that its run wrote
-    (`NodeResult.written`) and no declared outputs. If the remote gave no `written`, it returns
-    none. A file outside the run directory is returned only for a node that succeeded, under
-    `_external/<digest>/<name>` (`external_place`). A file that a succeeded node names and that is
+    A node that did not pass (its results hold no record, or a record of another outcome) returns
+    only the files that its run wrote (`NodeResult.written`) and no declared outputs. If the
+    remote gave no `written`, it returns none. A file that a passed node names and that is
     missing is an error."""
     selected: dict[str, Path] = {}
     for node in nodes:
         run_dir = os.path.abspath(node.run_dir)
         prefix = _node_prefix(run_root, node.run_dir)
-        succeeded = bool(node.results.get("success"))
+        record = _fetched_record(node, run_root)
+        succeeded = record is not None and record.passed
         inside: dict[str, Path] = {}  # place in the run directory -> file
-        outside: dict[str, Path] = {}  # place in the mirror directory -> file
         if fetch_all:
             places = _files_below(run_dir)
         else:
@@ -218,38 +229,28 @@ def select_fetch(
             places += _files_below(run_dir, "reports")
         for place in places:
             inside[place] = Path(run_dir, place)
-        if node.named:
+        if node.named and record is not None:
+            named = list(record.artifacts.values())
             if succeeded:
-                _declared_outputs_problem(node.results, run_dir)
-            named = [os.fspath(path) for path in iter_artifact_paths(node.results.get("artifacts"))]
-            if succeeded:
-                named += [os.fspath(path) for path in declared_output_files(dict(node.results))]
+                named += [
+                    path.relative_to(record.run_dir).as_posix()
+                    for files in stored_outputs(record).values()
+                    for path, _digest in files
+                ]
             for given in named:
-                mirrored = mirror_relative(given, run_dir)
-                full = given if os.path.isabs(given) else os.path.join(run_dir, given)
-                full = os.path.normpath(full)
-                is_external = mirrored.parts[0] == _EXTERNAL
-                if not (
-                    _is_regular(full)
-                    if is_external
-                    else _is_regular_inside(run_dir, mirrored.as_posix())
-                ):
+                if not _is_regular_inside(run_dir, given):
                     if succeeded:
                         raise RemoteFetchError(
                             f"{node.name} names {given}, but there is no regular file of that "
                             f"name in {run_dir} (a link is not followed)"
                         )
                     continue
-                if is_external:
-                    outside[mirrored.as_posix()] = Path(full)
-                else:
-                    inside[mirrored.as_posix()] = Path(full)
+                inside[given] = Path(os.path.normpath(os.path.join(run_dir, given)))
         inside.pop(_TRACE, None)
         if not succeeded:
             written = node.written or frozenset()
             inside = {place: path for place, path in inside.items() if place in written}
-            outside = {}
-        for place, path in {**inside, **outside}.items():
+        for place, path in inside.items():
             selected[(prefix / place).as_posix() if prefix.parts else place] = path
     return selected
 
@@ -338,6 +339,11 @@ def rewrite_results(
             record[key] = str(local)
     artifacts = rewritten.get("artifacts")
     if artifacts is not None:
+        # A file outside the run directory is in no record and does not come back.
+        artifacts = filter_artifact_paths(
+            artifacts,
+            lambda artifact: mirror_relative(os.fspath(artifact), remote_dir).parts[0] != _EXTERNAL,
+        )
         vouched = frozenset(written or ())
 
         def kept(artifact: ArtifactPath) -> bool:
@@ -377,29 +383,22 @@ def rewrite_records(
     mirror_dir: Path,
     run_root: Path,
     translate: Callable[[str], Optional[str]],
-    *,
-    results: Optional[Mapping[str, Any]] = None,
 ) -> None:
     """Write `results.json` and `settings.json` of the mirror directory again, with the paths of
     this side: a user who opens the mirror finds no path of the remote host in them.
 
     `translate` maps a path on the remote to the path of the same file here (`translate_paths`).
-    `results` are the results that `rewrite_results` returned for this directory. They replace the
-    content of `results.json`, which names the remote paths of every file. The caller holds the
-    lock of the mirror directory. A record that was not fetched is left out. A record that is
-    not JSON raises `RemoteFetchError`."""
+    The caller holds the lock of the mirror directory. A record that was not fetched is left out.
+    A record that is not JSON raises `RemoteFetchError`."""
     run_directory = RunDirectory.claimed(mirror_dir, run_root)
     for name in _RECORDS:
         record = mirror_dir / name
         if not _is_regular(str(record)):
             continue
-        if name == "results.json" and results is not None:
-            document: Any = results
-        else:
-            try:
-                document = json.loads(record.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as error:
-                raise RemoteFetchError(f"cannot read the fetched {record}: {error}") from None
+        try:
+            document = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise RemoteFetchError(f"cannot read the fetched {record}: {error}") from None
         try:
             target = run_directory.writable(name)
         except RunDirectoryError as error:
