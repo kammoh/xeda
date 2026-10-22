@@ -1028,26 +1028,34 @@ def xeda_plan(
     return XedaPlan("+".join(needed), [*design_sources, constraint])
 
 
+def root_node(document: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the node of the requested flow in the `--json` document of a xeda run, or `{}`."""
+    roots = document.get("roots") or []
+    for node in document.get("nodes") or []:
+        if roots and node.get("name") == roots[0]:
+            return node
+    return {}
+
+
 def read_xeda_results(document: Mapping[str, Any], half: str) -> dict[str, Any]:
     """Return the part of a result row that the `--json` output of a xeda run gives.
 
     The `synthesis` half reads the area and the cell count of the yosys flow. The other halves
-    read the results of the last flow and give them the ORFS metric names (`XEDA_RESULTS`).
+    read the metrics of the last flow and give them the ORFS metric names (`XEDA_RESULTS`).
     """
-    if not document.get("success", False):
+    if document.get("outcome") != "passed":
         error = document.get("error") or {}
         raise ParityError(
-            f"the xeda run failed: {error.get('type', 'unknown error')}: "
+            f"the xeda run failed: {error.get('code', 'unknown error')}: "
             f"{error.get('message', 'no message')}"
         )
-    results = document.get("results", {})
+    node = root_node(document)
+    record = node.get("record") or {}
+    results = record.get("metrics") or {}
     part: dict[str, Any] = {
-        "runtime_s": results.get("runtime"),
-        "tools": {t["executable"]: t.get("version") for t in results.get("tools", [])},
-        "flow_hash": results.get("flow_hash"),
-        "settings_hash": results.get("settings_hash"),
-        "design_hash": results.get("design_hash"),
-        "run_path": results.get("run_path"),
+        "runtime_s": record.get("runtime"),
+        "flow_hash": record.get("identity"),
+        "run_path": node.get("run_dir"),
     }
     if half == "synthesis":
         part["yosys_area"] = results.get("area")
@@ -1069,22 +1077,17 @@ def read_xeda_results(document: Mapping[str, Any], half: str) -> dict[str, Any]:
 
 
 def node_results(document: Mapping[str, Any], flow: str) -> dict[str, Any]:
-    """Return the area, the cell count and the run time from the results of the flow `flow` in a
-    chain, read from the run directory of its node. Return `{}` when there is no such node or no
-    results file."""
+    """Return the area, the cell count and the run time from the record of the flow `flow` in a
+    chain. Return `{}` when there is no such node or it has no record."""
     for node in document.get("nodes") or []:
-        if node.get("flow") == flow and node.get("run_path"):
-            try:
-                loaded = json.loads((Path(node["run_path"]) / "results.json").read_text())
-            except (OSError, ValueError):
+        if node.get("flow") == flow:
+            record = node.get("record")
+            if not isinstance(record, dict) or record.get("schema_version") != 1:
                 return {}
-            # Only a record of schema 1 is read; a file that an older Xeda wrote gives nothing.
-            if not isinstance(loaded, dict) or loaded.get("schema_version") != 1:
-                return {}
-            metrics = loaded.get("metrics") or {}
+            metrics = record.get("metrics") or {}
             found = {key: metrics[key] for key in ("area", "cells") if key in metrics}
-            if "runtime" in loaded:
-                found["runtime"] = loaded["runtime"]
+            if "runtime" in record:
+                found["runtime"] = record["runtime"]
             return found
     return {}
 
@@ -1931,12 +1934,12 @@ def command_script(args: argparse.Namespace) -> int:
         sdc=design.sdc,
     )
     document, _ = run_xeda(ctx, design, d, plan)
-    run_path = (document.get("results") or {}).get("run_path") or document.get("run_path")
+    run_path = root_node(document).get("run_dir")
     scripts = sorted(Path(run_path).glob("yosys_synth.*")) if run_path else []
     if not scripts:
         raise ParityError(f"xeda rendered no script; see {d / 'xeda.log'}")
     print(scripts[0].read_text(), end="")
-    return 0 if document.get("success") else 1
+    return 0 if document.get("outcome") == "passed" else 1
 
 
 def parser() -> argparse.ArgumentParser:

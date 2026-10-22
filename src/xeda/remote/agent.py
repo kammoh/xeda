@@ -1354,12 +1354,13 @@ class Session:
         request = self.request
         files: dict[str, Path] = {}
         if request is not None and document.get("nodes"):
-            named = {element.get("node") for element in document.get("request") or []}
+            # The nodes that the request names: their outputs and artifacts come back.
+            named = set(document.get("named") or [])
             written = document.get("written") or {}
             nodes = []
             for node in document["nodes"]:
-                name = node["node"]
-                run_dir = Path(node["run_path"])
+                name = node["name"]
+                run_dir = Path(node["run_dir"])
                 results = _read_json(run_dir / "results.json")
                 nodes.append(
                     NodeResult(
