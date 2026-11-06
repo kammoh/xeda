@@ -383,3 +383,18 @@ def test_the_plan_notebook_plans_runs_and_refuses(executions):
         assert cell_output(nb, "run-plan").startswith("passed True\nyosys_fpga  passed")
     assert cell_output(first, "first-plan").count("stale") == 2
     assert cell_output(first, "run-plan").endswith("nextpnr     passed  ran")
+
+
+def test_the_history_notebook_names_a_missing_tool(tmp_path):
+    from nbclient.exceptions import CellExecutionError
+
+    # The venv's bin and the system directories only: no OSS CAD Suite. The private settings
+    # file comes from an empty directory, so a file of the user cannot add a PATH.
+    path = f"{Path(sys.executable).parent}:/usr/bin:/bin"
+    config = tmp_path / "config"
+    config.mkdir()
+    env = {**EXAMPLES_ENV, "PATH": path, "XDG_CONFIG_HOME": str(config)}
+    with pytest.raises(CellExecutionError) as caught:
+        run_notebook(NB / "06-qor-history.ipynb", cwd=tmp_path, env=env)
+    text = str(caught.value)
+    assert "executable_not_found" in text and "yosys" in text
