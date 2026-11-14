@@ -33,6 +33,7 @@ import hashlib
 import os
 import threading
 import time
+import weakref
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
@@ -115,8 +116,8 @@ def package_files(directory: Path) -> list[Path]:
     resolved).
 
     These are all files under it except compiled bytecode (`__pycache__`, `.pyc`), hidden files,
-    which Python and editors create, and the files of a run root (`is_run_root`), which a launch
-    started in the directory writes.
+    which Python and editors create, backup files of editors (names that end in `~`), and the
+    files of a run root (`is_run_root`), which a launch started in the directory writes.
     """
     top = directory.resolve()
     listed = directory_files(top, skip=frozenset({"__pycache__"}), follow_links=True)
@@ -128,6 +129,7 @@ def package_files(directory: Path) -> list[Path]:
         for p in listed
         if p.is_file()
         and p.suffix not in (".pyc", ".pyo")
+        and not p.name.endswith("~")
         and not any(part.startswith(".") for part in p.relative_to(top).parts)
         and not any(p.is_relative_to(root) for root in run_roots)
     )
@@ -330,25 +332,26 @@ if "_XEDA" not in globals():
     #: package around it (an `__init__.py` added or removed) makes that root stale, and never
     #: starts another record.
     _ROOT_OF: dict[Path, CodeRoot] = {}
+    #: The code root of each Flow class, bound when the class was created (`bind`): None for a
+    #: class of Xeda. A class that is not here has no source file, or was never bound.
+    _BOUND: weakref.WeakKeyDictionary[type, CodeRoot | None] = weakref.WeakKeyDictionary()
 
 
 def verify() -> None:
     """Raise `StaleRuntimeError` if a file of the `xeda` package, or of the code of a flow that is
     registered now, is not what this process imported. Every entry that plans or launches calls
-    this first, so a request of a stale process writes nothing."""
+    this first, so a request of a stale process writes nothing.
+
+    The code of a flow is that of the roots bound to the classes of its MRO (`bind`), so a file
+    that is gone or moved makes the process stale, and never the flow source-less."""
     _XEDA.verified_pairs()
-    # The files of Xeda are those that this process imported, so these imports load no new code.
-    from .flow import Flow, registered_flows
-    from .flow.source_file import without_source_file
+    # The files of Xeda are those that this process imported, so this import loads no new code.
     from .flow_runner.code_digest import code_roots
+    from .flow import registered_flows
 
     roots: list[CodeRoot] = []
     for _, flow_class in list(registered_flows.values()):
-        classes = [c for c in flow_class.__mro__ if isinstance(c, type) and issubclass(c, Flow)]
-        if all(c.__module__.partition(".")[0] == "xeda" for c in classes):
-            continue  # a flow of Xeda's own: its files are those checked above
-        if without_source_file(classes) is None:
-            roots += [root for root in code_roots(flow_class) if root not in roots]
+        roots += [root for root in code_roots(flow_class) if root not in roots]
     for root in roots:  # many flows of one package share its root: check it once
         root.verified_pairs()
 
@@ -375,3 +378,22 @@ def plugin_root(module_file: Path) -> CodeRoot:
                 )
             _ROOT_OF[module_file] = root
     return root
+
+
+def bind(cls: type, source: Path) -> CodeRoot | None:
+    """Bind the Flow class `cls`, defined in the file `source`, to its code root, and return it.
+
+    A class of Xeda has no root: it is bound to None. A class is bound when it is created
+    (`Flow.__init_subclass__`), and its root stays whatever happens to the file later."""
+    root = None if source.is_relative_to(XEDA_PACKAGE) else plugin_root(source)
+    with _LOCK:
+        _BOUND[cls] = root
+    return root
+
+
+def bound_root(cls: type) -> CodeRoot | None:
+    """Return the root that `bind` gave `cls` (None for a class of Xeda).
+
+    Raise `KeyError` for a class that was never bound."""
+    with _LOCK:
+        return _BOUND[cls]

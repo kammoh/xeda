@@ -144,6 +144,13 @@ PLUGIN = layout_script("""
             tool = "import sys; print('started', flush=True); sys.stdin.readline()"
             subprocess.run([sys.executable, "-c", tool], cwd=self.run_path, check=True)
             (self.run_path / "out.txt").write_text(sentinel_text.TEXT)
+
+
+    class AlwaysBarrierToy(BarrierToy):
+        '''The same, and it always runs: no trace vouches for it.'''
+
+        def always_runs(self):
+            return super().always_runs() or "a test: it always runs"
 """)
 
 #: The start of every child: the copy of the package comes first on `sys.path`.
@@ -249,7 +256,7 @@ FRESH = PRELUDE + layout_script("""
 
 #: A process whose code changes while its node runs: the tool of the node waits for the change.
 MID_LAUNCH = PRELUDE + layout_script("""
-    tell(launch("barrier_toy", work / "xeda_run"))
+    tell(launch(sys.argv[4], work / "xeda_run"))
 """)
 
 #: A sweep in worker processes: the test changes the code of the flow after the sweep planned and
@@ -442,9 +449,12 @@ def test_without_a_change_every_entry_runs_and_reuses_as_before(tmp_path):
     assert copy.run_ids() == runs, "every launch reused the run"
 
 
-def test_a_change_while_a_node_runs_fails_the_node_and_keeps_no_trace(tmp_path):
+@pytest.mark.parametrize(
+    "flow", ["barrier_toy", "always_barrier_toy"], ids=["traced", "always runs"]
+)
+def test_a_change_while_a_node_runs_fails_the_node_and_keeps_no_trace(tmp_path, flow):
     copy = Copy(tmp_path)
-    child = copy.start(MID_LAUNCH)
+    child = copy.start(MID_LAUNCH, flow)
     assert child.stdout is not None
     assert child.stdout.readline().strip() == "started"  # the tool of the node waits now
     copy.version(B)

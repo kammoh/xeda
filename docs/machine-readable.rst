@@ -1029,8 +1029,12 @@ Code that changed on disk (``StaleRuntimeError``)
 
 ``stale_runtime``
     The code of Xeda or of a plugin flow changed on disk after this process imported it, so the
-    process runs the old code. It plans and launches nothing. Restart the Python process (in
-    Jupyter, restart the kernel).
+    process runs the old code. This refusal comes before a launch: the request plans nothing,
+    runs nothing and writes nothing. ``xeda run --json`` reports it with ``"outcome": null`` and the
+    exit status 2. A change that a node finds while it runs is another case: that node is
+    ``failed`` with the error code ``stale_runtime``, its ``results.json`` is a failed record, it
+    keeps no trace, and the exit status is 1. Restart the Python process (in Jupyter, restart the
+    kernel).
 
 A record that Python cannot read (``RecordError``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1358,7 +1362,8 @@ made earlier is stale when a Git dependency now resolves to another commit.
 
 ``code`` holds the digests of the code that made the plan, as opaque text: ``xeda`` for the code of
 Xeda, and one entry for each flow of the plan, by its name. The entry of a flow that Xeda defines is
-empty, since the digest of Xeda covers it. A process that imported other code refuses to run the
+empty, since the digest of Xeda covers it. A flow class without a source file has no entry: it
+always runs. A process that imported other code refuses to run the
 plan (``stale_runtime``, see :ref:`code-epoch`).
 
 ``nodes`` is ordered with the producers before the consumers and the requested flow last. In

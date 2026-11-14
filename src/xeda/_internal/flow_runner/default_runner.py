@@ -2134,6 +2134,7 @@ class FlowLauncher:
                 report(
                     flow, derived, results_json, self.settings, record=True, run_root=self.run_root
                 )
+                trace = None
                 if (
                     expected is not None
                     and snapshot is not None
@@ -2156,24 +2157,32 @@ class FlowLauncher:
                         previous,
                         run_id=str(flow.run_id),
                     )
+                if flow.outcome in ("passed", "rejected"):
+                    # Every accepted run, one that always runs included: it may have run other
+                    # code than its files, and then nothing of it is delivered or traced.
                     try:
                         check_code(type(flow))
                     except StaleRuntimeError as stale:
-                        # The run may have run other code than its files: no trace names it.
                         flow.results.success = False
                         flow.outcome = "failed"
                         flow.results["error"] = error_info(
                             stale, node=flow.name, flow=flow
                         ).to_dict()
-                        report(
-                            flow,
-                            derived,
-                            results_json,
-                            self.settings,
-                            record=True,
-                            run_root=self.run_root,
-                        )
+                        try:
+                            report(
+                                flow,
+                                derived,
+                                results_json,
+                                self.settings,
+                                record=True,
+                                run_root=self.run_root,
+                            )
+                        except Exception as problem:  # noqa: BLE001 - the stale error comes first
+                            log.error(
+                                "The record of %s could not be written: %s", flow.name, problem
+                            )
                         raise
+                if trace is not None:
                     write_trace(run_path, trace)
                 if flow.succeeded:
                     self._defer_delivery(flow, delivery, outputs_to)

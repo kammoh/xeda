@@ -1406,9 +1406,10 @@ class Flow(metaclass=ABCMeta):
                 "design output (`Out(DESIGN, ...)`) for the design it derives"
             )
         source, _ = find_source_file(cls)
-        if source is not None and not source.is_relative_to(code_epoch.XEDA_PACKAGE):
-            # The code of a plugin flow counts as this process imported it: record it now.
-            code_epoch.plugin_root(source)
+        if source is not None:
+            # The code of a plugin flow counts as this process imported it: record it now, and
+            # bind the class to it.
+            code_epoch.bind(cls, source)
         cls_name = cls.__name__
         mod_name = cls.__module__
         log.debug("registering flow %s from %s", cls_name, mod_name)

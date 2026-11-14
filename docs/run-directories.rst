@@ -687,9 +687,11 @@ A Python process runs the code that it imported, also after the files change on 
 kernel that imported Xeda an hour ago runs the Xeda of an hour ago. So the code that a trace names
 is the code that the process imported, and not the code on disk:
 
-- When ``xeda`` is imported, the process records every file of the package (the size, the times and
-  the inode of each file, and the content of a file that changed just before). The code of a flow
-  outside Xeda is recorded when its first flow class is created.
+- When ``xeda`` is imported, the process records every file of the package, except bytecode,
+  hidden files, the files of a run root and backup files (names that end in ``~``). It records the
+  size, the times and the inode of each file, and the content of a file that changed just before.
+  The code of a flow outside Xeda is recorded when its first flow class is created, and the class
+  keeps that record. A file of it that is later gone or moved makes the process stale.
 - Every entry that plans or launches (``Workspace.plan``, ``Workspace.run``, ``Workspace.sweep``,
   the launcher, ``xeda run``, ``xeda dse``, both ends of ``--remote``) first checks that the files
   on disk are still those: the files of Xeda and the code of every flow that is registered. A file that was edited, added or removed refuses the request with

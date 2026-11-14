@@ -189,8 +189,8 @@ def test_the_xeda_code_digest_covers_helpers_templates_and_data():
     from xeda._internal.code_epoch import package_files
 
     files = {
-        p.relative_to(code_digest.XEDA_PACKAGE).as_posix()
-        for p in package_files(code_digest.XEDA_PACKAGE)
+        p.relative_to(code_epoch.XEDA_PACKAGE).as_posix()
+        for p in package_files(code_epoch.XEDA_PACKAGE)
     }
     inside = impl_root().relative_to(package_root()).as_posix()
     wanted = {"utils.py", "cocotb.py", "tool.py", "data/boards.toml"}
@@ -223,7 +223,7 @@ def test_the_xeda_code_digest_is_of_the_files_and_not_where_they_are(tmp_path):
     An edit of a template in it refuses the next check."""
     copy = tmp_path / "elsewhere" / "xeda"
     shutil.copytree(
-        code_digest.XEDA_PACKAGE, copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+        code_epoch.XEDA_PACKAGE, copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
     )
     assert code_epoch.digest_pairs(_package_record(copy).verified_pairs()) == xeda_code_digest()
     moved = tmp_path / "moved" / "xeda"
@@ -670,3 +670,83 @@ def test_two_code_roots_with_the_same_file_count_twice(tmp_path, monkeypatch):
     both = flow_code_digest(Flow)
     monkeypatch.setattr(code_digest, "plugin_classes", lambda flow_class: classes[:1])
     assert flow_code_digest(Flow) != both
+
+
+# The code of a class is that of the root bound to it when it was created
+
+
+def test_a_flow_whose_defining_file_is_gone_makes_the_process_stale(plugin):
+    """The class keeps its root: a file that vanishes is a change, never a flow without code."""
+    code_epoch.verify()
+    check_code(plugin.flow_class)
+    (plugin.directory / "flows.py").unlink()
+    with pytest.raises(StaleRuntimeError, match="flows.py"):
+        code_epoch.verify()
+    with pytest.raises(StaleRuntimeError, match="flows.py"):
+        check_code(plugin.flow_class)
+    with pytest.raises(StaleRuntimeError, match="flows.py"):
+        flow_code_digest(plugin.flow_class)
+
+
+def test_a_flow_class_is_bound_to_its_root_when_it_is_created(plugin):
+    module_file = Path(sys.modules[plugin.flow_class.__module__].__file__ or "").resolve()
+    root = code_epoch.bound_root(plugin.flow_class)
+    assert root is code_epoch.plugin_root(module_file)
+    assert code_digest.code_roots(plugin.flow_class) == [root]
+
+
+def test_the_check_of_the_code_skips_a_flow_class_without_a_source_file(
+    tmp_path, design, monkeypatch
+):
+    with preserved_flow_registry():
+        for flow_class in _classes_without_a_file(monkeypatch).values():
+            check_code(flow_class)
+            assert code_digest.code_roots(flow_class) == []
+            code_epoch.verify()
+
+
+def test_a_flow_that_this_process_has_not_registered_is_left_out_of_the_fingerprint_check(plugin):
+    from xeda._internal.flow_runner.code_digest import check_fingerprint
+
+    xeda = xeda_code_digest()
+    check_fingerprint({"xeda": xeda, "no_such_flow": "0" * 32}, "The client planned with", "x")
+    with pytest.raises(StaleRuntimeError, match="the code of Xeda differs"):
+        check_fingerprint({"no_such_flow": "0" * 32}, "The client planned with", "x")
+    with pytest.raises(StaleRuntimeError, match=f"the flow `{plugin.flow_class.name}` differs"):
+        check_fingerprint({"xeda": xeda, plugin.flow_class.name: "0" * 32}, "The plan was by", "x")
+
+
+def test_an_editor_backup_file_is_no_code_file(plugin):
+    (plugin.directory / "helper.py~").write_text("old")
+    names = [name for name, _ in _named_files(plugin.flow_class)]
+    assert not any(name.endswith("~") for name in names)
+    flow_code_digest(plugin.flow_class)
+    (plugin.directory / "helper.py~").write_text("older")
+    flow_code_digest(plugin.flow_class)
+    check_code(plugin.flow_class)
+
+
+def test_a_failing_write_of_the_record_does_not_hide_the_stale_code(
+    tmp_path, plugin, design, monkeypatch
+):
+    from xeda._internal.flow_runner import default_runner
+
+    stale = StaleRuntimeError("the code changed", code="stale_runtime")
+    found = []
+
+    def changed(flow_class):
+        found.append(flow_class)
+        raise stale
+
+    real_report = default_runner.report
+
+    def report(*args, **kwargs):
+        if found:
+            raise OSError("no space left")
+        return real_report(*args, **kwargs)
+
+    monkeypatch.setattr(default_runner, "check_code", changed)
+    monkeypatch.setattr(default_runner, "report", report)
+    with pytest.raises(StaleRuntimeError) as raised:
+        _launch(tmp_path, plugin, design)
+    assert raised.value is stale and found == [plugin.flow_class]

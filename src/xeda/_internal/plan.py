@@ -408,7 +408,8 @@ def plan_from_dict(
     The document is the inverse of `Plan.to_dict`: a plan that was written and read again equals
     the plan. The plan gets `spec` and `workspace` from the caller, and never the `spec` of the
     document, which names the design of another machine. Raise `ValueError` if the document has
-    another schema version or lacks a part."""
+    another schema version or lacks a part. A document without `code` is read with an empty
+    fingerprint: running it refuses it (`stale_runtime`), as a plan that other code made."""
     if not isinstance(document, Mapping) or document.get("schema_version") != PLAN_DOCUMENT_VERSION:
         raise ValueError(f"not a plan document of schema version {PLAN_DOCUMENT_VERSION}")
     try:
@@ -419,7 +420,8 @@ def plan_from_dict(
         dependencies = tuple(
             {key: item[key] for key in _DEPENDENCY_KEYS} for item in document["dependencies"]
         )
-        code = document["code"]
+        # A document of older code has no `code`: its fingerprint is empty, so no process runs it.
+        code = document.get("code", {})
         if not isinstance(code, Mapping) or not all(
             isinstance(key, str) and isinstance(value, str) for key, value in code.items()
         ):

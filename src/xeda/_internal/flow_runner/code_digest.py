@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Type
 
 from .. import code_epoch
-from ..code_epoch import XEDA_PACKAGE, digest_pairs, root_files
+from ..code_epoch import digest_pairs, root_files
 from ..flow import Flow, FlowFatalError, registered_flows
 from ..flow.source_file import class_label, find_source_file, without_source_file
 from xeda.errors import StaleRuntimeError
@@ -74,16 +74,33 @@ def _source_file(cls: type) -> Path:
     return file
 
 
+def _root_of(cls: type, strict: bool = False) -> code_epoch.CodeRoot | None:
+    """Return the record of the code root of `cls`, None for a class of Xeda.
+
+    A Flow class is bound to its root when it is created (`code_epoch.bind`), and the binding
+    holds whatever happens to its file later. A class that was not bound is bound now, by the
+    file that defines it. A class without a source file has no root: it is None, or
+    `FlowFatalError` if `strict`."""
+    try:
+        return code_epoch.bound_root(cls)
+    except KeyError:
+        pass
+    file, _ = find_source_file(cls)
+    if file is None:
+        if strict:
+            _source_file(cls)  # raises
+        return None
+    return code_epoch.bind(cls, file)
+
+
 def plugin_classes(flow_class: Type[Flow]) -> list[type]:
     """Return the classes of the MRO of `flow_class` that are Flow classes outside Xeda.
 
-    Raise `FlowFatalError` if the code of one of them cannot be found (`_source_file`)."""
+    A class without a source file is left out: it always runs (`Flow.always_runs`)."""
     return [
         cls
         for cls in flow_class.__mro__
-        if isinstance(cls, type)
-        and issubclass(cls, Flow)
-        and not _source_file(cls).is_relative_to(XEDA_PACKAGE)
+        if isinstance(cls, type) and issubclass(cls, Flow) and _root_of(cls) is not None
     ]
 
 
@@ -103,6 +120,9 @@ def flow_code_digest(flow_class: Type[Flow]) -> str:
     raises `FlowFatalError` for a class that has no source file on disk (`Flow.always_runs` runs
     such a flow every time, so a launch never asks for its digest), and `StaleRuntimeError` when a
     file of its code changed since the process recorded it (`code_epoch.plugin_root`)."""
+    for cls in flow_class.__mro__:
+        if isinstance(cls, type) and issubclass(cls, Flow):
+            _root_of(cls, strict=True)
     pairs = [pair for root in code_roots(flow_class) for pair in root.verified_pairs()]
     return digest_pairs(pairs) if pairs else ""
 
@@ -112,8 +132,8 @@ def code_roots(flow_class: Type[Flow]) -> list[code_epoch.CodeRoot]:
     once: classes of one tree count the tree once."""
     roots: list[code_epoch.CodeRoot] = []
     for cls in plugin_classes(flow_class):
-        root = code_epoch.plugin_root(_source_file(cls))
-        if root not in roots:
+        root = _root_of(cls)
+        if root is not None and root not in roots:
             roots.append(root)
     return roots
 
@@ -122,11 +142,13 @@ def check_code(flow_class: Type[Flow]) -> None:
     """Raise `StaleRuntimeError` if the code of Xeda or of `flow_class` on disk is not the code
     that this process imported.
 
-    A launch calls this after it built a trace and before it writes it, and before it accepts a
-    reuse: the digests that it computed at its start are those of the imported code, so they
-    vouch for nothing that changed since."""
+    The code of `flow_class` is that of the roots bound to the classes of its MRO. A class
+    without a source file has none. A launch calls this after it built a trace and before it
+    writes it, and before it accepts a reuse: the digests that it computed at its start are those
+    of the imported code, so they vouch for nothing that changed since."""
     xeda_code_digest()
-    flow_code_digest(flow_class)
+    for root in code_roots(flow_class):
+        root.verified_pairs()
 
 
 def code_fingerprint(flow_classes: Iterable[Type[Flow]]) -> dict[str, str]:
@@ -151,8 +173,8 @@ def check_fingerprint(expected: Mapping[str, str], whose: str, advice: str) -> N
     `code_fingerprint` is `expected`.
 
     `whose` names the code of `expected` in the message ("The sweep planned with"), and `advice`
-    says what to do. A flow of `expected` that this process has not registered differs, and so
-    does Xeda when `expected` has no digest of it."""
+    says what to do. A flow of `expected` that this process has not registered is skipped: it
+    cannot run here. Xeda's digest is always compared, so `expected` without one differs."""
     from .. import flows  # noqa: F401 - registers the flows of Xeda
 
     changed = []
@@ -162,7 +184,9 @@ def check_fingerprint(expected: Mapping[str, str], whose: str, advice: str) -> N
             current: str | None = xeda_code_digest()
         else:
             found = registered_flows.get(name)
-            current = None if found is None else flow_code_digest(found[1])
+            if found is None:
+                continue
+            current = flow_code_digest(found[1])
         if current != digest:
             changed.append("Xeda" if name == "xeda" else f"the flow `{name}`")
     if changed:
