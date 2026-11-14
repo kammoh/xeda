@@ -32,6 +32,7 @@ from xeda._internal.flow_runner.code_digest import (
     xeda_code_digest,
 )
 
+from xeda._internal.events import Event
 from xeda._internal.spec import Spec
 from xeda._internal.workspace import Workspace
 
@@ -313,6 +314,92 @@ def test_a_flow_class_passed_directly_is_checked_at_the_entry(
     with pytest.raises(StaleRuntimeError, match="helper.py"):
         CLASS_ENTRIES[entry](runner, plugin.flow_class, design)
     assert out.read_text() == "one\nmessage one\n"
+
+
+TWO_PRODUCERS = layout_script("""
+    from pathlib import Path
+    from typing import ClassVar
+
+    from xeda._internal.design import SourceType
+    from xeda._internal.flow import Flow, In, MetricSpec, Out
+    from xeda._internal.utils import replacing_file
+
+    from . import helper
+
+
+    class {prefix}Maker(Flow):
+        '''Writes the text of its helper.'''
+
+        results_description: ClassVar[dict[str, MetricSpec]] = {{}}
+
+        class Outputs(Flow.Outputs):
+            made: Path = Out(SourceType.Data, description="The file.")
+
+        def run(self) -> None:
+            path = self.run_path / "made.txt"
+            with replacing_file(self.run_directory.writable(path)) as f:
+                f.write(helper.TEXT)
+            self.outputs.made = path
+
+
+    class {prefix}A({prefix}Maker):
+        '''The first producer.'''
+
+
+    class {prefix}B({prefix}Maker):
+        '''The second producer.'''
+
+
+    class {prefix}Root(Flow):
+        '''Reads what both producers made.'''
+
+        results_description: ClassVar[dict[str, MetricSpec]] = {{}}
+
+        class Inputs(Flow.Inputs):
+            a: Path = In(SourceType.Data, producer="{name}_a", output="made", description="A.")
+            b: Path = In(SourceType.Data, producer="{name}_b", output="made", description="B.")
+
+        def run(self) -> None:
+            pass
+""")
+
+
+def test_a_change_between_two_producers_fails_the_second_one_as_a_value(
+    tmp_path, design, monkeypatch
+):
+    """The entry of the second producer finds the change: that producer fails with
+    `stale_runtime`, and the launch ends with a result that keeps the first one."""
+    unique = uuid.uuid4().hex[:8].translate(str.maketrans("0123456789", "ghijklmnop"))
+    package, prefix, name = f"two_{unique}", f"Two{unique.capitalize()}", f"two_{unique}"
+    root = tmp_path / "code"
+    _write(root / package / "__init__.py", "")
+    _write(root / package / "helper.py", 'TEXT = "one\\n"\n')
+    _write(root / package / "flows.py", TWO_PRODUCERS.format(prefix=prefix, name=name))
+    monkeypatch.syspath_prepend(str(root))
+    importlib.invalidate_caches()
+    changed: list[str] = []
+
+    def on_event(event: Event) -> None:
+        if event.kind == "node_finished" and not changed:
+            changed.append(event.node or "")
+            _write(root / package / "helper.py", 'TEXT = "two\\n"\n')
+
+    with preserved_flow_registry():
+        try:
+            importlib.import_module(f"{package}.flows")
+            result = Workspace(tmp_path / "xeda_run").run(
+                Spec(f"{name}_root", design), on_event=on_event
+            )
+        finally:
+            _forget_modules(package)
+    assert changed == [f"{name}_a"]
+    nodes = {n: (str(r.outcome), r.error and r.error.code) for n, r in result.nodes.items()}
+    assert nodes == {
+        f"{name}_a": ("passed", None),
+        f"{name}_b": ("failed", "stale_runtime"),
+        f"{name}_root": ("blocked", "producer_failed"),
+    }
+    assert (str(result.outcome), result.error and result.error.code) == ("failed", "stale_runtime")
 
 
 def test_a_new_import_of_the_flow_keeps_the_record_of_its_code(plugin):

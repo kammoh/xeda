@@ -697,10 +697,11 @@ is the code that the process imported, and not the code on disk:
   on disk are still those: the files of Xeda and the code of every flow that is registered. A file that was edited, added or removed refuses the request with
   ``StaleRuntimeError`` (code ``stale_runtime``). The request plans nothing, runs nothing and
   writes nothing. ``xeda run --json`` reports it with ``outcome: null`` and exit status 2.
-- A launch checks again before it writes a trace, before it accepts an earlier run, and before it
-  writes the record of a generation. A change found while a node runs fails the node with
-  ``stale_runtime`` (exit status 1). The node may have run some of the new code, so it keeps no
-  trace, and the next launch runs it again.
+- A launch checks again before each node starts, before it writes a trace, before it accepts an
+  earlier run, and before it writes the record of a generation. A change found after the first
+  node started fails the node with ``stale_runtime`` (exit status 1), and the nodes that read its
+  outputs are blocked. A node that ran may have run some of the new code, so it keeps no trace,
+  and the next launch runs it again.
 - The record of a generation names the code of Xeda that wrote it. A record of other code is not
   trusted, and the generator runs again.
 - A plan keeps the digests of the code that made it: Xeda's, and that of each flow outside Xeda

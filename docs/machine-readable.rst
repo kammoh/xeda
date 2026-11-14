@@ -833,9 +833,10 @@ the cause.
     A worker process of a sweep could not import the module of a flow. The message names the
     module.
 ``stale_runtime``
-    The code of Xeda or of a plugin flow changed on disk while the node ran, after the process
-    imported it, or a worker process of a sweep imported other code than the code that planned
-    the sweep. The node keeps no trace. Restart the Python process (see :ref:`code-epoch`).
+    The code of Xeda or of a plugin flow changed on disk after the process imported it: while
+    the node ran, or before it started, after an earlier node of the launch. Or a worker process
+    of a sweep imported other code than the code that planned the sweep. The node keeps no trace.
+    Restart the Python process (see :ref:`code-epoch`).
 
 Errors of a launch (``launch``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1787,7 +1787,7 @@ class FlowLauncher:
                     plan,
                     all_flows_settings,
                     read_leases,
-                    launch_flow=self.launch_flow,
+                    launch_flow=self._launch_producer,
                     read_lease=self._producer_read_lease,
                     completed=self._planned_completed,
                     entered=self._entered,
@@ -1853,7 +1853,7 @@ class FlowLauncher:
                         plan,
                         all_flows_settings,
                         read_leases,
-                        launch_flow=self.launch_flow,
+                        launch_flow=self._launch_producer,
                         read_lease=self._producer_read_lease,
                         completed=self._planned_completed,
                         read_inputs=self._read_inputs,
@@ -2264,6 +2264,26 @@ class FlowLauncher:
             self.run_root,
             policy,
         )
+
+    def _launch_producer(
+        self,
+        flow_class: Union[str, Type[Flow]],
+        design: Design,
+        flow_settings: Union[Dict[str, Any], Flow.Settings, None],
+        **launch: Any,
+    ) -> Flow:
+        """Launch a producer of a node (`launch_producers`) through `launch_flow`.
+
+        The entry of the producer checks the code first. A change that it finds refuses the
+        producer before its run began: that is the end of the producer, which failed before it
+        had a flow, so the result names it and its consumer is blocked by it."""
+        try:
+            return self.launch_flow(flow_class, design, flow_settings, **launch)
+        except StaleRuntimeError as error:
+            plan, key = launch.get("plan"), launch.get("plan_node")
+            if plan is not None and key is not None:
+                self.collector.failed_before_start(plan.node(key), error)
+            raise
 
     @log_context.with_launch_context
     def run_flow(
