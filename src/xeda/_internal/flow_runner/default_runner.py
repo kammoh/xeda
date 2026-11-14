@@ -120,7 +120,7 @@ from .. import code_epoch
 from .code_digest import CodeDigests, check_code, check_fingerprint
 from .configuration import configuration_hash, design_configuration_hash
 from .environment import EnvironmentSnapshot, snapshot_with_tools
-from .error_codes import INTERNAL_ERROR, error_info, plain_message, public_error
+from .error_codes import INTERNAL_ERROR, STALE_RUNTIME, error_info, plain_message, public_error
 from .launch_identity import RunDirPolicy
 from .launch_input import refuse_outputs_to_a_programmer
 from .launch_options import LaunchOptions
@@ -1131,7 +1131,8 @@ class FlowLauncher:
         graph, and judges the nodes and the deliveries, all as they are now. An error that this
         planning raises (a flow that is gone, settings or a design that no longer validate, a
         delivery that is refused) is a difference too, since the caller's plan was made without
-        it. A bug of Xeda is none, and it propagates."""
+        it. A bug of Xeda is none, and it propagates. Code that changed on disk is none either:
+        this process cannot plan again, so its `StaleRuntimeError` propagates."""
         expected = self._expected_plan
         if expected is None:
             return
@@ -1155,7 +1156,7 @@ class FlowLauncher:
                 self._refuse_planned(plan)
                 difference = self._difference_of(request, plan)
             except Exception as error:  # noqa: BLE001 - judged below
-                if public_error(error).code == INTERNAL_ERROR:
+                if public_error(error).code in (INTERNAL_ERROR, STALE_RUNTIME):
                     raise
                 difference, cause = f"planning is refused now: {plain_message(error)}", error
         if difference is not None:

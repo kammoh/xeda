@@ -22,6 +22,7 @@ from xeda.errors import StaleRuntimeError
 from xeda._internal import code_epoch
 from xeda._internal.flow import Flow, FlowFatalError, registered_flows
 from xeda._internal.flow_runner import DefaultRunner, code_digest
+from xeda._internal.flow_runner.default_runner import FlowLauncher
 from xeda._internal.package_paths import impl_root, package_root
 from xeda._internal.flow_runner.code_digest import (
     CodeDigests,
@@ -400,6 +401,33 @@ def test_a_change_between_two_producers_fails_the_second_one_as_a_value(
         f"{name}_root": ("blocked", "producer_failed"),
     }
     assert (str(result.outcome), result.error and result.error.code) == ("failed", "stale_runtime")
+
+
+def test_a_change_found_when_a_plan_is_checked_under_the_locks_is_no_stale_plan(
+    tmp_path, plugin, design, monkeypatch
+):
+    """The launch of a plan plans again under its locks. A change of the code that this planning
+    finds fails the node with `stale_runtime`, and not with `stale_plan`: planning again cannot
+    help."""
+    workspace = Workspace(tmp_path / "xeda_run")
+    plan = workspace.plan(Spec(plugin.flow_class.name, design))
+    real = FlowLauncher._judged_request
+    calls: list[int] = []
+
+    def judged(self, *arguments, **keywords):
+        calls.append(1)
+        if len(calls) > 1:  # the check of the plan, under the locks of the launch
+            _write(plugin.directory / "helper.py", 'TEXT = "two\\n"\n')
+        return real(self, *arguments, **keywords)
+
+    monkeypatch.setattr(FlowLauncher, "_judged_request", judged)
+    result = workspace.run(plan)
+    assert len(calls) == 2
+    node = result.nodes[plugin.flow_class.name]
+    assert (str(node.outcome), node.error and node.error.code) == ("failed", "stale_runtime")
+    assert (str(result.outcome), result.error and result.error.code) == ("failed", "stale_runtime")
+    assert "helper.py" in result.error.message
+    assert not list((tmp_path / "xeda_run").rglob("out.txt")), "nothing ran"
 
 
 def test_a_new_import_of_the_flow_keeps_the_record_of_its_code(plugin):

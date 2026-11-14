@@ -834,9 +834,9 @@ the cause.
     module.
 ``stale_runtime``
     The code of Xeda or of a plugin flow changed on disk after the process imported it: while
-    the node ran, or before it started, after an earlier node of the launch. Or a worker process
-    of a sweep imported other code than the code that planned the sweep. The node keeps no trace.
-    Restart the Python process (see :ref:`code-epoch`).
+    the node ran, or before it started but after the check at the entry of the launch. Or a
+    worker process of a sweep imported other code than the code that planned the sweep. The node
+    keeps no trace. Restart the Python process (see :ref:`code-epoch`).
 
 Errors of a launch (``launch``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
