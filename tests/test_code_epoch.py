@@ -38,6 +38,9 @@ pytestmark = pytest.mark.python_compat
 # ---------------------------------------------------------------- every entry checks the code
 
 #: The public methods of the entry classes that neither plan nor launch.
+#: Annotations of a parameter that can hold a flow class: the class itself, or a request of one.
+FLOW_ANNOTATIONS = ("type[Flow]", "Type[Flow]", "FlowRequest", "_Request")
+
 NOT_LAUNCHING = {
     "Workspace": {"load_record", "records", "scrub"},
     "FlowLauncher": {"run_root", "launch_id", "xeda_run_dir", "run_path_of", "get_flow_run_path"},
@@ -94,7 +97,17 @@ def test_every_public_entry_that_plans_or_launches_checks_the_code_first(cls):
         first = _first_statement(_function(value))
         if not (isinstance(first, ast.Expr) and _is_check(first.value)):
             unchecked.append(name)
-    assert unchecked == [], f"{cls.__name__} entries without `code_epoch.verify()` first"
+            continue
+        # A parameter that can hold a flow class goes to the check: the registry may hold
+        # another class of that name, or none.
+        passed = {
+            n.id for arg in first.value.args for n in ast.walk(arg) if isinstance(n, ast.Name)
+        }
+        for parameter in inspect.signature(value).parameters.values():
+            if any(k in str(parameter.annotation) for k in FLOW_ANNOTATIONS):
+                if parameter.name not in passed:
+                    unchecked.append(f"{name}({parameter.name})")
+    assert unchecked == [], f"{cls.__name__} entries without `code_epoch.verify(...)` first"
 
 
 @pytest.mark.parametrize(

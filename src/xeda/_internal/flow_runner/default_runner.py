@@ -680,7 +680,9 @@ class FlowLauncher:
 
         A design that still has dependencies to merge gets them merged first, after the checks
         that the settings alone allow."""
-        code_epoch.verify(flow_class)
+        code_epoch.verify(
+            flow_class, *(() if flow_request is None else _request_flows(flow_request))
+        )
         self._refuse_before_merging(
             flow_class, design, flow_settings, all_flows_settings, flow_request
         )
@@ -2431,7 +2433,7 @@ class FlowLauncher:
         `local_settings` are the private settings of the user and of the checkout, as
         `xeda.local_settings()` reads them: two layers of the settings (`settings_layers`). The
         launcher reads no private file."""
-        code_epoch.verify()
+        code_epoch.verify(flow)
         request, plan = self.resolve_run(
             flow,
             design,
@@ -2465,7 +2467,7 @@ class FlowLauncher:
 
         Return the request, which holds the loaded design, and its plan. `run_resolved` launches
         them."""
-        code_epoch.verify()
+        code_epoch.verify(flow)
         # Where requests are not taken (`Dse`), refuse before loading what needs no design.
         # What does need it is listed there, and refused below, once the request is resolved.
         if not self.accepts_bindings:
@@ -2488,7 +2490,7 @@ class FlowLauncher:
     @log_context.with_launch_context
     def run_resolved(self, request: _Request, plan: Plan) -> Optional[Flow]:
         """Execute the request and plan that `resolve_run` returned."""
-        code_epoch.verify()
+        code_epoch.verify(request.flow_class)
         previous, self._request_context = self._request_context, request
         try:
             return self.run_flow(
@@ -2520,7 +2522,7 @@ class FlowLauncher:
         Fetch the Git dependencies of the design into the run root, and refuse what `run()`
         would refuse before anything runs: a run directory that a flow refuses, and
         `--outputs-to` for a programmer."""
-        code_epoch.verify()
+        code_epoch.verify(flow)
         return self._plan(
             flow,
             design,
@@ -2565,7 +2567,7 @@ class FlowLauncher:
         `before_fetch` is a check of the design as the caller gave it. It runs after the checks of
         the settings and before any dependency is read, so before a Git dependency is resolved or
         fetched. A remote request refuses here what needs no value of a dependency."""
-        code_epoch.verify()
+        code_epoch.verify(*(_request_flows(flow) if isinstance(flow, FlowRequest) else (flow,)))
         if not self.accepts_bindings:
             self._refuse_unaccepted_request(flow, flow_settings, [], xedaproject, design)
         request, plan = self._judged_request(
@@ -2615,7 +2617,7 @@ class FlowLauncher:
         only a process can) or `blocked`. This is read-only: nothing is created, locked,
         refreshed or started (`plan_freshness`). `--rebuild-all` and `--clean` make every node
         stale."""
-        code_epoch.verify()
+        code_epoch.verify(flow)
         planned = self.plan_launch(
             flow,
             design,
@@ -2650,7 +2652,7 @@ class FlowLauncher:
         node and the deliveries that each node would make. Besides what `plan()` refuses, it
         refuses a delivery that no answer could allow. Nothing is created, locked, refreshed or
         started."""
-        code_epoch.verify()
+        code_epoch.verify(flow)
         request, plan = self._plan(
             flow,
             design,

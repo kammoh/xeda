@@ -592,7 +592,7 @@ class Dse(FlowLauncher):
     ) -> Any:
         """Resolve the request, as a launcher does, and keep the private settings that it gets:
         the sweeps of the exploration plan every point with them."""
-        code_epoch.verify()
+        code_epoch.verify(flow)
         self._local_settings = local_settings
         return super().resolve_run(
             flow,
@@ -625,7 +625,7 @@ class Dse(FlowLauncher):
         """Explore variations of the flow settings and return the best run.
 
         The exploration holds no lock while its workers run: a thread that holds one is refused."""
-        code_epoch.verify()
+        code_epoch.verify(flow_class)
         refuse_if_held()
         assert isinstance(self.settings, self.Settings)
         _refuse_flow(self.optimizer, flow_class)

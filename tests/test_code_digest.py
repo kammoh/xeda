@@ -286,8 +286,23 @@ def test_a_changed_plugin_refuses_every_entry_before_the_request_writes(tmp_path
     assert out.read_text() == "one\nmessage one\n"
 
 
+#: The entries that take a flow class, each called with the class and the design.
+CLASS_ENTRIES = {
+    "launch_flow": lambda runner, cls, design: runner.launch_flow(cls, design, {}),
+    "run_flow": lambda runner, cls, design: runner.run_flow(cls, design),
+    "resolve": lambda runner, cls, design: runner.resolve(cls, design, {}),
+    "resolve_run": lambda runner, cls, design: runner.resolve_run(cls, design),
+    "run": lambda runner, cls, design: runner.run(cls, design),
+    "plan": lambda runner, cls, design: runner.plan(cls, design),
+    "plan_with_freshness": lambda runner, cls, design: runner.plan_with_freshness(cls, design),
+    "plan_launch": lambda runner, cls, design: runner.plan_launch(cls, design),
+    "prepare_request": lambda runner, cls, design: runner.prepare_request(cls, design),
+}
+
+
+@pytest.mark.parametrize("entry", sorted(CLASS_ENTRIES))
 def test_a_flow_class_passed_directly_is_checked_at_the_entry(
-    tmp_path, plugin, design, monkeypatch
+    tmp_path, plugin, design, monkeypatch, entry
 ):
     """A class that the registry no longer holds (another class took its name) is still checked
     at the entry when a caller passes it, so `clean` empties nothing."""
@@ -296,7 +311,7 @@ def test_a_flow_class_passed_directly_is_checked_at_the_entry(
     _write(plugin.directory / "helper.py", 'TEXT = "two\\n"\n')
     runner = DefaultRunner(tmp_path / "xeda_run", display_results=False, clean=True)
     with pytest.raises(StaleRuntimeError, match="helper.py"):
-        runner.launch_flow(plugin.flow_class, design, {})
+        CLASS_ENTRIES[entry](runner, plugin.flow_class, design)
     assert out.read_text() == "one\nmessage one\n"
 
 
