@@ -596,7 +596,7 @@ def test_a_code_change_before_a_delivery_is_an_error_of_the_point(tmp_path, desi
     destination.parent.mkdir()
     finished: list[Event] = []
 
-    def verify() -> None:
+    def verify(*requested: object) -> None:
         if finished:
             raise StaleRuntimeError("Xeda's code changed on disk", code="stale_runtime")
 

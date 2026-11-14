@@ -337,10 +337,12 @@ if "_XEDA" not in globals():
     _BOUND: weakref.WeakKeyDictionary[type, CodeRoot | None] = weakref.WeakKeyDictionary()
 
 
-def verify() -> None:
+def verify(*requested: object) -> None:
     """Raise `StaleRuntimeError` if a file of the `xeda` package, or of the code of a flow that is
     registered now, is not what this process imported. Every entry that plans or launches calls
-    this first, so a request of a stale process writes nothing.
+    this first, so a request of a stale process writes nothing. `requested` are the flow classes
+    that the caller passes directly (a flow name is skipped): their code is checked too, also
+    when the registry holds another class of that name.
 
     The code of a flow is that of the roots bound to the classes of its MRO (`bind`), so a file
     that is gone or moved makes the process stale, and never the flow source-less."""
@@ -350,7 +352,8 @@ def verify() -> None:
     from .flow import registered_flows
 
     roots: list[CodeRoot] = []
-    for _, flow_class in list(registered_flows.values()):
+    classes = [c for _, c in list(registered_flows.values())]
+    for flow_class in classes + [c for c in requested if isinstance(c, type)]:
         roots += [root for root in code_roots(flow_class) if root not in roots]
     for root in roots:  # many flows of one package share its root: check it once
         root.verified_pairs()

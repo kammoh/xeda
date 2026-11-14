@@ -680,7 +680,7 @@ class FlowLauncher:
 
         A design that still has dependencies to merge gets them merged first, after the checks
         that the settings alone allow."""
-        code_epoch.verify()
+        code_epoch.verify(flow_class)
         self._refuse_before_merging(
             flow_class, design, flow_settings, all_flows_settings, flow_request
         )
@@ -939,7 +939,7 @@ class FlowLauncher:
         failure, delivers nothing, not even the outputs of a producer that succeeded
         (`_finish_launch`).
         """
-        code_epoch.verify()
+        code_epoch.verify(flow_class)
         if self._launch_depth == 0:
             run_lock.refuse_if_held()
         if plan is None:
@@ -2281,7 +2281,7 @@ class FlowLauncher:
         composed into `flow_settings` by `compose_flow_settings`), then `flow_settings`. A
         `Flow.Settings` instance is taken as final. `run()` and `plan()` also read a project
         file. A built design names none, so hand its sections in as `all_flows_settings`."""
-        code_epoch.verify()
+        code_epoch.verify(flow_class)
         if plan is None and depender is None:
             flow_cls = get_flow_class(flow_class) if isinstance(flow_class, str) else flow_class
             sections, section_bindings = split_bindings(

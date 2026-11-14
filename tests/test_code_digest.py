@@ -20,7 +20,7 @@ import pytest
 from xeda import Design
 from xeda.errors import StaleRuntimeError
 from xeda._internal import code_epoch
-from xeda._internal.flow import Flow, FlowFatalError
+from xeda._internal.flow import Flow, FlowFatalError, registered_flows
 from xeda._internal.flow_runner import DefaultRunner, code_digest
 from xeda._internal.package_paths import impl_root, package_root
 from xeda._internal.flow_runner.code_digest import (
@@ -283,6 +283,20 @@ def test_a_changed_plugin_refuses_every_entry_before_the_request_writes(tmp_path
         workspace.run(Spec(plugin.flow_class.name, design), clean=True)
     with pytest.raises(StaleRuntimeError, match="helper.py"):
         Workspace(tmp_path / "other").plan(Spec("yosys_fpga", design))
+    assert out.read_text() == "one\nmessage one\n"
+
+
+def test_a_flow_class_passed_directly_is_checked_at_the_entry(
+    tmp_path, plugin, design, monkeypatch
+):
+    """A class that the registry no longer holds (another class took its name) is still checked
+    at the entry when a caller passes it, so `clean` empties nothing."""
+    out = _launch(tmp_path, plugin, design).run_path / "out.txt"
+    monkeypatch.delitem(registered_flows, plugin.flow_class.name)
+    _write(plugin.directory / "helper.py", 'TEXT = "two\\n"\n')
+    runner = DefaultRunner(tmp_path / "xeda_run", display_results=False, clean=True)
+    with pytest.raises(StaleRuntimeError, match="helper.py"):
+        runner.launch_flow(plugin.flow_class, design, {})
     assert out.read_text() == "one\nmessage one\n"
 
 
