@@ -147,8 +147,9 @@ __all__ = [
 #: The form of a flow name. A name starts with a letter, so no name begins with an underscore.
 FLOW_NAME = re.compile(r"[a-z][a-z0-9_]*")
 
-#: Names that no flow may have: they start the keys of a table of settings or of a sweep.
-RESERVED_FLOW_NAMES = frozenset({"flows", "design", "settings"})
+#: Names that no flow may have: they start the keys of a table of settings or of a sweep, and
+#: `xeda` is the key of the package in a code fingerprint (`code_digest.code_fingerprint`).
+RESERVED_FLOW_NAMES = frozenset({"flows", "design", "settings", "xeda"})
 
 registered_flows: Dict[str, Tuple[str, Type[Flow]]] = {}
 
